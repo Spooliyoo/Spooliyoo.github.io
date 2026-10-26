@@ -1,6 +1,7 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { parseTimestamp } from "./calc";
+import { isStorageFullError, STORAGE_FULL_MESSAGE } from "./storage-errors";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -37,7 +38,9 @@ export function downloadBlob(blob: Blob, filename: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-export const errorMessage = (e: unknown) => (e instanceof Error ? e.message : String(e));
+/** User-facing message for an error; storage-full errors get a plain-language explanation. */
+export const errorMessage = (e: unknown) =>
+  isStorageFullError(e) ? STORAGE_FULL_MESSAGE : e instanceof Error ? e.message : String(e);
 
 /** Number input → number | NaN, treating blank as the fallback. */
 export const num = (v: string, fallback = NaN) => (v.trim() === "" ? fallback : Number(v));

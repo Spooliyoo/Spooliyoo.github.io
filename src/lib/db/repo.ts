@@ -327,11 +327,12 @@ export async function savePrint(
 
   const photoStore = opts.photoStore;
   const newPhotoIds: string[] = [];
-  // Blobs are written before the DB transaction; if the transaction fails they're removed again.
+  // Blobs are written before the DB transaction; if anything fails (e.g. storage full) they're removed again,
+  // so a failed save never leaves orphaned photos behind.
   const preparedPhotos = (opts.newPhotos ?? []).map((p) => ({ ...p, id: crypto.randomUUID() }));
-  if (photoStore) for (const p of preparedPhotos) await photoStore.put(p.id, p.blob);
 
   try {
+    if (photoStore) for (const p of preparedPhotos) await photoStore.put(p.id, p.blob);
     const id = await db.transaction(async (tx) => {
       let printId = existingId ?? null;
       if (printId) {
@@ -384,7 +385,7 @@ export async function savePrint(
     if (photoStore) for (const pid of opts.removePhotoIds ?? []) await photoStore.delete(pid);
     return id;
   } catch (e) {
-    if (photoStore) for (const p of preparedPhotos) await photoStore.delete(p.id);
+    if (photoStore) for (const p of preparedPhotos) await photoStore.delete(p.id).catch(() => {}); // best effort
     throw e;
   }
 }
