@@ -1,0 +1,14 @@
+node_modules/
+.next/
+out/
+next-env.d.ts
+*.tsbuildinfo
+.env*.local
+.DS_Store
+# generated at build time
+public/sw.js
+public/sw.js.map
+public/swe-worker-*.js
+playwright-report/
+test-results/
+coverage/

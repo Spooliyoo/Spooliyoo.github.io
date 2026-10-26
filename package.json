@@ -1,0 +1,58 @@
+{
+  "name": "filament-tracker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Offline-first PWA that tracks filament left on each 3D-printer spool and prices every print.",
+  "license": "MIT",
+  "scripts": {
+    "dev": "next dev --webpack",
+    "build": "next build --webpack",
+    "start": "node scripts/serve.mjs out 4173",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "db:generate": "drizzle-kit generate && node scripts/gen-migrations.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@serwist/cli": "^9.5.13",
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/node": "^26.6.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "drizzle-kit": "^0.31.11",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^16.4.3",
+    "postcss": "^8.5.31",
+    "prettier": "^3.9.10",
+    "prettier-plugin-tailwindcss": "^0.8.1",
+    "tailwindcss": "^4.3.3",
+    "typescript": "5.9",
+    "vitest": "^5.0.5"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.5.11",
+    "@serwist/next": "^9.5.13",
+    "@serwist/window": "^9.5.13",
+    "@tanstack/react-query": "^5.104.5",
+    "browser-image-compression": "^2.0.2",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "drizzle-orm": "^0.45.4",
+    "lucide-react": "^1.61.0",
+    "next": "^16.4.3",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "react-hook-form": "^7.91.0",
+    "serwist": "^9.5.13",
+    "tailwind-merge": "^3.7.0",
+    "zod": "^4.6.5"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
