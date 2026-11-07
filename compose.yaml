@@ -1,0 +1,15 @@
+# Self-hosting behind a Cloudflare Tunnel: no host ports are published; the tunnel reaches
+# the container by name over the shared "cloudflare-net" network.
+# Deploy/update:  docker compose up -d --build
+services:
+  filament-tracker:
+    build: .
+    image: filament-tracker:latest
+    container_name: filament-tracker
+    restart: unless-stopped
+    networks:
+      - cloudflare-net
+
+networks:
+  cloudflare-net:
+    external: true

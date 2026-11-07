@@ -17,6 +17,7 @@ import {
 } from "@/components/ui";
 import { LocalDataNotice, SpoolRow } from "@/components/shared";
 import { PrintRow } from "@/components/print-row";
+import { StorageWarning } from "@/components/storage-warning";
 import { formatGrams } from "@/lib/calc";
 import { parseTimestamp } from "@/lib/calc";
 
@@ -50,6 +51,8 @@ export default function DashboardPage() {
           </>
         }
       />
+
+      <StorageWarning />
 
       {needsBackup && (
         <Alert variant="info">

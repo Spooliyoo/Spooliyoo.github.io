@@ -25,3 +25,24 @@ export function isStorageFullError(e: unknown, depth = 0): boolean {
   if (typeof err.message === "string" && PATTERN.test(err.message)) return true;
   return isStorageFullError(err.cause, depth + 1) || isStorageFullError(err.error, depth + 1);
 }
+
+// ---------- Low-space warning ----------
+
+/** Warn once the app has used this share of what the browser allows it. */
+export const STORAGE_WARN_RATIO = 0.8;
+/** …or when less than this much room is left, whatever the ratio. */
+export const STORAGE_WARN_MIN_FREE = 200 * 1024 * 1024;
+
+export type StorageLevel = "ok" | "low" | "critical";
+
+/** Classifies the browser's storage estimate. `critical` = under 5% or 25 MB left. */
+export function storageLevel(usage?: number, quota?: number): StorageLevel {
+  if (usage == null || quota == null || quota <= 0) return "ok";
+  const free = quota - usage;
+  if (usage / quota >= 0.95 || free < 25 * 1024 * 1024) return "critical";
+  if (usage / quota >= STORAGE_WARN_RATIO || free < STORAGE_WARN_MIN_FREE) return "low";
+  return "ok";
+}
+
+export const formatBytes = (b: number) =>
+  b >= 1024 ** 3 ? `${(b / 1024 ** 3).toFixed(1)} GB` : `${Math.max(0, b / 1024 ** 2).toFixed(0)} MB`;
