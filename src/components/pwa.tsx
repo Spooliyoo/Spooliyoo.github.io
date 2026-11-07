@@ -33,10 +33,19 @@ const isStandalone = () =>
   (window.matchMedia("(display-mode: standalone)").matches ||
     (navigator as Navigator & { standalone?: boolean }).standalone === true);
 
-const isIos = () =>
-  typeof navigator !== "undefined" &&
-  (/iPad|iPhone|iPod/.test(navigator.userAgent) ||
-    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1));
+export type Platform = "ios" | "mac-safari" | "firefox-desktop" | "firefox-android" | "chromium" | "other";
+
+function detectPlatform(): Platform {
+  if (typeof navigator === "undefined") return "other";
+  const ua = navigator.userAgent;
+  const ios =
+    /iPad|iPhone|iPod/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  if (ios) return "ios";
+  if (/Firefox\//.test(ua)) return /Android/.test(ua) ? "firefox-android" : "firefox-desktop";
+  if (/Chrome\/|Chromium\/|Edg\//.test(ua)) return "chromium";
+  if (/Macintosh/.test(ua) && /Safari\//.test(ua)) return "mac-safari";
+  return "other";
+}
 
 const subscribe = (cb: () => void) => {
   listeners.add(cb);
@@ -47,19 +56,16 @@ const subscribe = (cb: () => void) => {
     mq.removeEventListener("change", cb);
   };
 };
-// Snapshot encodes [installed, canPrompt, ios] as a string so React can compare it cheaply.
-const snapshot = () => {
-  const installed = isStandalone();
-  return `${+installed}${+(!installed && !!deferredPrompt)}${+(!installed && isIos())}`;
-};
+// Snapshot "<mounted><installed><canPrompt>" — a string so React can compare it cheaply.
+const snapshot = () => `1${+isStandalone()}${+(!isStandalone() && !!deferredPrompt)}`;
 const serverSnapshot = () => "000";
 
 export function useInstall() {
   const s = React.useSyncExternalStore(subscribe, snapshot, serverSnapshot);
   return {
-    installed: s[0] === "1",
-    canPrompt: s[1] === "1",
-    ios: s[2] === "1",
+    mounted: s[0] === "1",
+    installed: s[1] === "1",
+    canPrompt: s[2] === "1",
     prompt: async () => {
       if (!deferredPrompt) return;
       await deferredPrompt.prompt();
@@ -70,33 +76,97 @@ export function useInstall() {
   };
 }
 
-export function InstallButton({ className }: { className?: string }) {
-  const { canPrompt, ios, prompt } = useInstall();
-  const [guide, setGuide] = React.useState(false);
-  if (!canPrompt && !ios) return null;
-  return (
-    <>
-      <Button variant="outline" className={className} onClick={() => (canPrompt ? prompt() : setGuide(true))}>
-        <Download /> Install app
-      </Button>
-      <Dialog
-        open={guide}
-        onClose={() => setGuide(false)}
-        title="Install on iPhone or iPad"
-        footer={<Button onClick={() => setGuide(false)}>Got it</Button>}
-      >
+const icon = (C: typeof Share) => <C className="inline size-4 align-text-bottom" />;
+
+function InstallSteps({ platform }: { platform: Platform }) {
+  switch (platform) {
+    case "ios":
+      return (
         <ol className="flex list-decimal flex-col gap-3 pl-5">
           <li>
             Open this page in <b>Safari</b>.
           </li>
           <li>
-            Tap the <b>Share</b> button <Share className="inline size-4 align-text-bottom" />.
+            Tap the <b>Share</b> button {icon(Share)}.
           </li>
           <li>
-            Choose <b>Add to Home Screen</b> <SquarePlus className="inline size-4 align-text-bottom" />, then{" "}
-            <b>Add</b>.
+            Choose <b>Add to Home Screen</b> {icon(SquarePlus)}, then <b>Add</b>.
           </li>
         </ol>
+      );
+    case "mac-safari":
+      return (
+        <ol className="flex list-decimal flex-col gap-3 pl-5">
+          <li>
+            In the menu bar, choose <b>File → Add to Dock…</b>
+          </li>
+          <li>
+            Click <b>Add</b>. The app opens in its own window from your Dock.
+          </li>
+        </ol>
+      );
+    case "firefox-desktop":
+      return (
+        <p>
+          Firefox on computers can&apos;t install web apps. Open this page in <b>Chrome</b>, <b>Edge</b> or{" "}
+          <b>Safari</b> (Mac) to install it — or keep using it here as a website.
+        </p>
+      );
+    case "firefox-android":
+      return (
+        <ol className="flex list-decimal flex-col gap-3 pl-5">
+          <li>
+            Tap the <b>⋮</b> menu.
+          </li>
+          <li>
+            Choose <b>Install</b> or <b>Add to Home screen</b>.
+          </li>
+        </ol>
+      );
+    default:
+      return (
+        <ol className="flex list-decimal flex-col gap-3 pl-5">
+          <li>
+            Open the browser menu (<b>⋮</b> or <b>…</b>).
+          </li>
+          <li>
+            Choose <b>Install app</b>, <b>Add to Home screen</b>, or{" "}
+            <b>Cast, save and share → Install page as app</b>.
+          </li>
+          <li>
+            If you don&apos;t see it yet, wait a few seconds for the page to finish loading, then try again.
+          </li>
+        </ol>
+      );
+  }
+}
+
+/** Shown wherever the app isn't installed yet. Uses the browser's own prompt when available, otherwise a guide. */
+export function InstallButton({ className, size }: { className?: string; size?: "sm" | "default" }) {
+  const { mounted, installed, canPrompt, prompt } = useInstall();
+  const [guide, setGuide] = React.useState<Platform | null>(null);
+  if (!mounted || installed) return null;
+  return (
+    <>
+      <Button
+        variant="outline"
+        size={size}
+        className={className}
+        onClick={() => (canPrompt ? prompt() : setGuide(detectPlatform()))}
+      >
+        <Download /> Install app
+      </Button>
+      <Dialog
+        open={!!guide}
+        onClose={() => setGuide(null)}
+        title="Install Filament Tracker"
+        footer={<Button onClick={() => setGuide(null)}>Got it</Button>}
+      >
+        {guide && <InstallSteps platform={guide} />}
+        <p className="text-muted-foreground mt-4 text-xs">
+          Installing gives the app its own icon, works offline, and helps protect your data from being
+          cleared.
+        </p>
       </Dialog>
     </>
   );

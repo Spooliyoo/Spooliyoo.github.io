@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { History, LayoutDashboard, Plus, Settings, Disc3 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { InstallButton } from "./pwa";
 
 const NAV = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -49,7 +50,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <Icon className="size-4" /> {label}
           </Link>
         ))}
+        <InstallButton className="mt-auto" />
       </aside>
+
+      {/* Mobile top bar */}
+      <header className="bg-card/95 sticky top-0 z-30 flex h-12 items-center justify-between border-b px-4 backdrop-blur md:hidden">
+        <Link href="/" className="flex items-center gap-2 text-sm font-semibold">
+          <Disc3 className="text-primary size-5" /> Filament Tracker
+        </Link>
+        <InstallButton size="sm" />
+      </header>
 
       <main id="main" className="mx-auto w-full max-w-4xl flex-1 px-4 pt-4 pb-28 md:px-8 md:pt-8 md:pb-10">
         {children}
