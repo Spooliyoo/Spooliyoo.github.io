@@ -72,13 +72,21 @@ test("add a spool, log a print, see grams deducted, then use it offline", async 
       for (const k of keys) {
         const c = await caches.open(k);
         const reqs = await c.keys();
-        if (reqs.some((r) => r.url.includes("pglite") && r.url.endsWith(".wasm"))) return true;
+        const urls = reqs.map((r) => r.url);
+        const ready =
+          urls.some((u) => /pglite.*\.wasm/.test(u)) &&
+          urls.some((u) => /initdb.*\.wasm/.test(u)) &&
+          urls.some((u) => /pglite.*\.data/.test(u)) &&
+          urls.some((u) => u.endsWith("/spools/"));
+        if (ready) return true;
       }
       return false;
     },
     null,
     { timeout: 60_000 },
   );
+  // Leave the page first so its database lock is released before the offline load.
+  await page.goto("about:blank");
   await context.setOffline(true);
   await page.goto("/spools/");
   await expect(page.getByText("Matte Black PLA")).toBeVisible({ timeout: 60_000 });

@@ -27,14 +27,14 @@ let instance: Promise<AppDatabase> | null = null;
 function acquireTabLock(): Promise<void> {
   if (typeof navigator === "undefined" || !("locks" in navigator)) return Promise.resolve();
   return new Promise((resolve, reject) => {
-    navigator.locks.request("filament-tracker-db", { ifAvailable: true }, (lock) => {
-      if (!lock) {
-        reject(new OtherTabError());
-        return;
-      }
-      resolve();
-      return new Promise<void>(() => {}); // hold the lock for the life of the tab
-    });
+    // Wait a few seconds: on a reload/navigation the previous page may still be releasing the lock.
+    const signal = AbortSignal.timeout(5000);
+    navigator.locks
+      .request("filament-tracker-db", { signal }, () => {
+        resolve();
+        return new Promise<void>(() => {}); // hold the lock for the life of the tab
+      })
+      .catch((e) => reject(e?.name === "AbortError" || e?.name === "TimeoutError" ? new OtherTabError() : e));
   });
 }
 
