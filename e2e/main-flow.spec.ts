@@ -54,7 +54,7 @@ test("add a spool, log a print, see grams deducted, then use it offline", async 
   await page.goto("/settings/");
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export backup" }).click();
-  expect((await download).suggestedFilename()).toMatch(/^filament-tracker-backup-.*\.json$/);
+  expect((await download).suggestedFilename()).toMatch(/^spooliyoo-backup-.*\.json$/);
 
   // Offline: wait for the service worker to take control, then reload with no network
   await page.evaluate(async () => {
@@ -90,7 +90,8 @@ test("add a spool, log a print, see grams deducted, then use it offline", async 
   await context.setOffline(true);
   await page.goto("/spools/");
   await expect(page.getByText("Matte Black PLA")).toBeVisible({ timeout: 60_000 });
-  await page.getByRole("link", { name: "History" }).last().click();
+  await page.goto("about:blank");
+  await page.goto("/prints/");
   await expect(page.getByText("Benchy")).toBeVisible();
   await page.goto("/spools/view/?id=not-a-real-id");
   await expect(page.getByText("Spool not found")).toBeVisible();
