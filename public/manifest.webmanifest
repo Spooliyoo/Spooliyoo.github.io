@@ -1,14 +1,14 @@
 {
-  "name": "Filament Tracker",
-  "short_name": "Filament",
+  "name": "Spooliyoo — Filament Tracker",
+  "short_name": "Spooliyoo",
   "description": "Track filament left on every 3D-printer spool and price every print.",
   "id": "./",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",
-  "background_color": "#fbf9f6",
-  "theme_color": "#e8752a",
+  "background_color": "#ffffff",
+  "theme_color": "#1d5fd1",
   "categories": ["productivity", "utilities"],
   "icons": [
     { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },

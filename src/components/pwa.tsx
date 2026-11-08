@@ -159,7 +159,7 @@ export function InstallButton({ className, size }: { className?: string; size?: 
       <Dialog
         open={!!guide}
         onClose={() => setGuide(null)}
-        title="Install Filament Tracker"
+        title="Install Spooliyoo"
         footer={<Button onClick={() => setGuide(null)}>Got it</Button>}
       >
         {guide && <InstallSteps platform={guide} />}

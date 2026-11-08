@@ -212,7 +212,7 @@ export function parseBackup(text: string): BackupPreview {
     throw new Error("This file isn't valid JSON.");
   }
   if ((raw as { format?: unknown })?.format !== BACKUP_FORMAT)
-    throw new Error("This file isn't a Filament Tracker backup.");
+    throw new Error("This file isn't a Spooliyoo backup.");
   const res = backupZ.safeParse(migrateBackup(raw));
   if (!res.success) {
     const issue = res.error.issues[0];

@@ -34,7 +34,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* Desktop sidebar */}
       <aside className="bg-card sticky top-0 hidden h-dvh w-56 shrink-0 flex-col gap-1 border-r p-3 md:flex">
         <Link href="/" className="mb-4 flex items-center gap-2 px-2 py-1 font-semibold">
-          <Disc3 className="text-primary size-6" /> Filament Tracker
+          <Disc3 className="text-primary size-6" /> Spooliyoo
         </Link>
         {NAV.map(({ href, label, icon: Icon, ...rest }) => (
           <Link
@@ -44,7 +44,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             className={cn(
               "hover:bg-muted flex items-center gap-3 rounded-lg px-3 py-2 text-sm",
               isActive(path, href) && "bg-muted font-medium",
-              "primary" in rest && "bg-primary text-primary-foreground hover:bg-primary/90",
+              "primary" in rest && "bg-accent text-accent-foreground hover:bg-accent/90 font-medium",
             )}
           >
             <Icon className="size-4" /> {label}
@@ -56,7 +56,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* Mobile top bar */}
       <header className="bg-card/95 sticky top-0 z-30 flex h-12 items-center justify-between border-b px-4 backdrop-blur md:hidden">
         <Link href="/" className="flex items-center gap-2 text-sm font-semibold">
-          <Disc3 className="text-primary size-5" /> Filament Tracker
+          <Disc3 className="text-primary size-5" /> Spooliyoo
         </Link>
         <InstallButton size="sm" />
       </header>
@@ -79,7 +79,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 href={href}
                 className="flex flex-col items-center justify-center gap-0.5 py-1.5"
               >
-                <span className="bg-primary text-primary-foreground -mt-5 flex size-12 items-center justify-center rounded-full shadow-lg">
+                <span className="bg-accent text-accent-foreground -mt-5 flex size-12 items-center justify-center rounded-full shadow-lg">
                   <Icon className="size-6" />
                 </span>
                 <span className="text-[11px]">{label}</span>

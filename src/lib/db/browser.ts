@@ -15,9 +15,7 @@ export interface AppDatabase {
 
 export class OtherTabError extends Error {
   constructor() {
-    super(
-      "Filament Tracker is already open in another tab or window. Close it there, then reload this page.",
-    );
+    super("Spooliyoo is already open in another tab or window. Close it there, then reload this page.");
   }
 }
 

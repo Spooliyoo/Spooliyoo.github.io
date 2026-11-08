@@ -229,7 +229,7 @@ describe("backup", () => {
 
   it("rejects files that aren't backups or are from a newer version", () => {
     expect(() => parseBackup("not json")).toThrow(/valid JSON/);
-    expect(() => parseBackup(JSON.stringify({ foo: 1 }))).toThrow(/isn't a Filament Tracker backup/);
+    expect(() => parseBackup(JSON.stringify({ foo: 1 }))).toThrow(/isn't a Spooliyoo backup/);
     expect(() =>
       parseBackup(JSON.stringify({ format: "filament-tracker-backup", schemaVersion: 99 })),
     ).toThrow(/newer version/);

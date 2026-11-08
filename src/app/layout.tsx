@@ -7,14 +7,14 @@ import { PersistOnFirstUse, ServiceWorker } from "@/components/pwa";
 const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
 export const metadata: Metadata = {
-  title: { default: "Filament Tracker", template: "%s · Filament Tracker" },
+  title: { default: "Spooliyoo", template: "%s · Spooliyoo" },
   description: "Track filament left on every 3D-printer spool and price every print. Offline, private, free.",
   manifest: `${base}/manifest.webmanifest`,
   icons: {
     icon: [{ url: `${base}/icons/icon.svg`, type: "image/svg+xml" }],
     apple: [{ url: `${base}/icons/apple-touch-icon.png`, sizes: "180x180" }],
   },
-  appleWebApp: { capable: true, title: "Filament", statusBarStyle: "default" },
+  appleWebApp: { capable: true, title: "Spooliyoo", statusBarStyle: "default" },
 };
 
 export const viewport: Viewport = {
@@ -22,8 +22,8 @@ export const viewport: Viewport = {
   initialScale: 1,
   viewportFit: "cover",
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#fbf9f6" },
-    { media: "(prefers-color-scheme: dark)", color: "#1c1a18" },
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#0f1a2e" },
   ],
 };
 

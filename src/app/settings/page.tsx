@@ -188,7 +188,7 @@ function BackupCard() {
                 const b = await exportBackup(db, photos);
                 downloadBlob(
                   new Blob([JSON.stringify(b)], { type: "application/json" }),
-                  `filament-tracker-backup-${stamp()}.json`,
+                  `spooliyoo-backup-${stamp()}.json`,
                 );
                 await write(({ db }) => markBackedUp(db));
                 toast("Backup downloaded");
@@ -361,7 +361,7 @@ function AboutCard() {
           <InstallButton className="self-start" />
         )}
         <p className="text-muted-foreground">
-          Filament Tracker v{VERSION} · Free and open source (MIT). Works offline; no account, no tracking.
+          Spooliyoo v{VERSION} · Free and open source (MIT). Works offline; no account, no tracking.
         </p>
         {REPO_URL && (
           <a

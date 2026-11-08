@@ -1,8 +1,8 @@
-# Filament Tracker
+# Spooliyoo
 
 Know how many grams are left on every 3D-printer spool, and what every print really costs.
 
-Filament Tracker is a free, open-source **offline-first web app**. It installs on your phone or computer like an app, and **all your data stays on your device**: no account, no server, no tracking.
+Spooliyoo is a free, open-source **offline-first web app**. It installs on your phone or computer like an app, and **all your data stays on your device**: no account, no server, no tracking.
 
 **Live app:** `https://<your-user>.github.io/<repo>/` _(set once the repository is public)_
 
