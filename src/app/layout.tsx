@@ -1,4 +1,6 @@
 import type { Metadata, Viewport } from "next";
+import "@fontsource-variable/inter";
+import "@fontsource-variable/lexend";
 import "./globals.css";
 import { Providers } from "@/components/providers";
 import { AppShell } from "@/components/app-shell";
@@ -22,8 +24,8 @@ export const viewport: Viewport = {
   initialScale: 1,
   viewportFit: "cover",
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
-    { media: "(prefers-color-scheme: dark)", color: "#0f1a2e" },
+    { media: "(prefers-color-scheme: light)", color: "#f6f5f2" },
+    { media: "(prefers-color-scheme: dark)", color: "#141a2b" },
   ],
 };
 

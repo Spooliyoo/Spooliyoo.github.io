@@ -16,7 +16,7 @@ for (const [name, size, full] of shots) {
   // Maskable icons need a full-bleed background and the artwork inside the 80% safe zone.
   const inner = full ? svg.replace(/rx="112"/, 'rx="0"') : svg;
   await page.setContent(
-    `<html><body style="margin:0;background:${full ? "#1d5fd1" : "transparent"}">` +
+    `<html><body style="margin:0;background:${full ? "#1f57e0" : "transparent"}">` +
       `<div style="width:${size}px;height:${size}px;display:flex;align-items:center;justify-content:center">` +
       `<div style="width:${full ? size * 0.8 : size}px;height:${full ? size * 0.8 : size}px">${inner.replace("<svg ", '<svg width="100%" height="100%" ')}</div></div></body></html>`,
   );

@@ -7,17 +7,17 @@ import { cn } from "@/lib/utils";
 // Small shadcn/ui-style primitives, kept in one file and free to edit.
 
 export const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0 select-none",
+  "inline-flex items-center justify-center gap-2 rounded-full text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0 select-none",
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/90",
+        default: "bg-primary text-primary-foreground shadow-sm shadow-primary/25 hover:bg-primary/90",
         outline: "border border-input bg-card hover:bg-muted",
         ghost: "hover:bg-muted",
         danger: "bg-danger text-white hover:bg-danger/90",
         link: "text-primary underline-offset-4 hover:underline px-0",
       },
-      size: { default: "h-10 px-4", sm: "h-8 px-3 text-xs", lg: "h-12 px-6 text-base", icon: "size-10" },
+      size: { default: "h-10 px-5", sm: "h-8 px-3.5 text-xs", lg: "h-12 px-7 text-base", icon: "size-10" },
     },
     defaultVariants: { variant: "default", size: "default" },
   },
@@ -93,7 +93,15 @@ export function Field({
 }
 
 export function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("bg-card rounded-xl border", className)} {...props} />;
+  return (
+    <div
+      className={cn(
+        "border-border/60 bg-card rounded-3xl border shadow-[0_1px_3px_rgb(15_23_42/0.04),0_8px_24px_-12px_rgb(15_23_42/0.08)]",
+        className,
+      )}
+      {...props}
+    />
+  );
 }
 
 export function CardHeader({
@@ -106,8 +114,11 @@ export function CardHeader({
   className?: string;
 }) {
   return (
-    <div className={cn("flex items-center justify-between gap-2 px-4 pt-4", className)}>
-      <h2 className="text-sm font-semibold">{title}</h2>
+    <div className={cn("flex items-center justify-between gap-2 px-5 pt-5", className)}>
+      <h2 className="flex items-center gap-2 text-xs font-semibold tracking-[0.12em] uppercase">
+        <span aria-hidden className="bg-accent size-1.5 shrink-0 rounded-full" />
+        {title}
+      </h2>
       {action}
     </div>
   );
@@ -260,7 +271,7 @@ export function PageHeader({
   return (
     <div className="mb-4 flex min-h-10 items-center gap-2">
       {back}
-      <h1 className="min-w-0 flex-1 truncate text-xl font-semibold">{title}</h1>
+      <h1 className="font-display min-w-0 flex-1 truncate text-2xl font-semibold tracking-tight">{title}</h1>
       {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
     </div>
   );
@@ -278,7 +289,7 @@ export function Stat({
   return (
     <div className="flex flex-col gap-0.5">
       <span className="text-muted-foreground text-xs">{label}</span>
-      <span className="tabular text-lg font-semibold">{value}</span>
+      <span className="tabular font-display text-xl font-semibold tracking-tight">{value}</span>
       {sub && <span className="text-muted-foreground text-xs">{sub}</span>}
     </div>
   );

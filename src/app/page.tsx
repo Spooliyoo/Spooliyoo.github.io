@@ -68,11 +68,20 @@ export default function DashboardPage() {
         </Alert>
       )}
 
-      <Card className="grid grid-cols-3 gap-4 p-4">
-        <Stat label="Active spools" value={d.activeCount} />
-        <Stat label="Filament in stock" value={formatGrams(d.totalStockG)} />
-        <Stat label="Stock value" value={money(d.stockValue)} />
-      </Card>
+      <div className="grid grid-cols-3 gap-2 sm:gap-4">
+        {[
+          { label: "Active spools", value: d.activeCount },
+          { label: "Filament in stock", value: formatGrams(d.totalStockG) },
+          { label: "Stock value", value: money(d.stockValue) },
+        ].map((t) => (
+          <Card key={t.label} className="from-card to-primary-soft bg-gradient-to-br p-3 sm:p-5">
+            <div className="font-display tabular truncate text-xl font-semibold tracking-tight sm:text-4xl">
+              {t.value}
+            </div>
+            <div className="text-muted-foreground mt-1 text-xs sm:mt-2 sm:text-sm">{t.label}</div>
+          </Card>
+        ))}
+      </div>
 
       <Card>
         <CardHeader title={`This month · ${monthName}`} />

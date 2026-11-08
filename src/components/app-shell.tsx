@@ -32,8 +32,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         Skip to content
       </a>
       {/* Desktop sidebar */}
-      <aside className="bg-card sticky top-0 hidden h-dvh w-56 shrink-0 flex-col gap-1 border-r p-3 md:flex">
-        <Link href="/" className="mb-4 flex items-center gap-2 px-2 py-1 font-semibold">
+      <aside className="bg-card border-border/60 sticky top-4 m-4 mr-0 hidden h-[calc(100dvh-2rem)] w-60 shrink-0 flex-col gap-1 rounded-3xl border p-4 shadow-[0_8px_24px_-12px_rgb(15_23_42/0.12)] md:flex">
+        <Link
+          href="/"
+          className="font-display mb-6 flex items-center gap-2 px-2 py-1 text-lg font-semibold tracking-tight"
+        >
           <Disc3 className="text-primary size-6" /> Spooliyoo
         </Link>
         {NAV.map(({ href, label, icon: Icon, ...rest }) => (
@@ -42,8 +45,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             href={href}
             aria-current={isActive(path, href) ? "page" : undefined}
             className={cn(
-              "hover:bg-muted flex items-center gap-3 rounded-lg px-3 py-2 text-sm",
-              isActive(path, href) && "bg-muted font-medium",
+              "hover:bg-muted flex items-center gap-3 rounded-full px-4 py-2.5 text-sm font-medium",
+              isActive(path, href) && "bg-primary-soft text-primary",
               "primary" in rest && "bg-accent text-accent-foreground hover:bg-accent/90 font-medium",
             )}
           >
@@ -54,8 +57,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       {/* Mobile top bar */}
-      <header className="bg-card/95 sticky top-0 z-30 flex h-12 items-center justify-between border-b px-4 backdrop-blur md:hidden">
-        <Link href="/" className="flex items-center gap-2 text-sm font-semibold">
+      <header className="bg-card/95 border-border/60 sticky top-2 z-30 mx-3 mt-2 flex h-14 items-center justify-between rounded-full border px-4 shadow-[0_8px_24px_-12px_rgb(15_23_42/0.15)] backdrop-blur md:hidden">
+        <Link
+          href="/"
+          className="font-display flex items-center gap-2 text-base font-semibold tracking-tight"
+        >
           <Disc3 className="text-primary size-5" /> Spooliyoo
         </Link>
         <InstallButton size="sm" />
