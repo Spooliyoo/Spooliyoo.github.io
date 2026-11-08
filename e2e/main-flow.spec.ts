@@ -54,7 +54,7 @@ test("add a spool, log a print, see grams deducted, then use it offline", async 
   await page.goto("/settings/");
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export backup" }).click();
-  expect((await download).suggestedFilename()).toMatch(/^spooliyoo-backup-.*\.json$/);
+  expect((await download).suggestedFilename()).toMatch(/^filament-tracker-backup-.*\.json$/);
 
   // Offline: wait for the service worker to take control, then reload with no network
   await page.evaluate(async () => {
