@@ -8,6 +8,7 @@ import type { Settings } from "@/lib/db/schema";
 import { formatMoney } from "@/lib/calc";
 import { Alert, Button, Spinner } from "./ui";
 import { errorMessage } from "@/lib/utils";
+import { BackupNudge } from "./backup-nudge";
 import { isStorageFullError, STORAGE_FULL_MESSAGE, STORAGE_FULL_TITLE } from "@/lib/storage-errors";
 import { AlertTriangle, X } from "lucide-react";
 
@@ -247,6 +248,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
         <StorageFullContext.Provider value={setStorageFull}>
           <ToastHost>
             <ThemeSync />
+            <BackupNudge />
             {storageFull && <StorageFullBanner onClose={() => setStorageFull(false)} />}
             {children}
           </ToastHost>

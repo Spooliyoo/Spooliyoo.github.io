@@ -34,17 +34,12 @@ import {
   Select,
   Spinner,
 } from "@/components/ui";
-import { markBackedUp, updateSettings } from "@/lib/db/repo";
-import {
-  exportBackup,
-  exportPrintsCsv,
-  importBackup,
-  parseBackup,
-  type BackupPreview,
-} from "@/lib/db/backup";
+import { updateSettings } from "@/lib/db/repo";
+import { exportPrintsCsv, importBackup, parseBackup, type BackupPreview } from "@/lib/db/backup";
 import { settingsInputSchema, type SettingsInput } from "@/lib/validation";
 import { zodResolver } from "@/lib/zod-resolver";
 import { downloadBlob, errorMessage, formatDate } from "@/lib/utils";
+import { downloadBackupFile } from "@/lib/backup-download";
 import type { Settings } from "@/lib/db/schema";
 
 const VERSION = process.env.NEXT_PUBLIC_APP_VERSION ?? "1.0.0";
@@ -185,12 +180,7 @@ function BackupCard() {
             onClick={async () => {
               setBusy("export");
               try {
-                const b = await exportBackup(db, photos);
-                downloadBlob(
-                  new Blob([JSON.stringify(b)], { type: "application/json" }),
-                  `spooliyoo-backup-${stamp()}.json`,
-                );
-                await write(({ db }) => markBackedUp(db));
+                await write((app) => downloadBackupFile(app));
                 toast("Backup downloaded");
               } catch (e) {
                 toast(errorMessage(e), "danger");

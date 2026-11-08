@@ -56,6 +56,19 @@ export async function markBackedUp(db: DB): Promise<void> {
   await db.update(settings).set({ lastBackupAt: now() }).where(eq(settings.id, 1));
 }
 
+/** How many spools, prints and weight corrections were added, edited or deleted since the last backup. */
+export async function changesSinceBackup(db: DB): Promise<{ changes: number; lastBackupAt: string | null }> {
+  const res = await db.execute(sql`
+    WITH b AS (SELECT coalesce(last_backup_at, '-infinity'::timestamptz) AS t, last_backup_at FROM settings WHERE id = 1)
+    SELECT b.last_backup_at,
+      (SELECT count(*) FROM spools, b WHERE spools.updated_at > b.t)
+      + (SELECT count(*) FROM prints, b WHERE prints.updated_at > b.t)
+      + (SELECT count(*) FROM spool_adjustments, b WHERE spool_adjustments.updated_at > b.t) AS changes
+    FROM b`);
+  const row = res.rows[0] as { changes: unknown; last_backup_at: string | null } | undefined;
+  return { changes: Number(row?.changes ?? 0), lastBackupAt: tsToIso(row?.last_backup_at ?? null) };
+}
+
 // ---------- Spools ----------
 
 export interface SpoolWithStats extends Spool {

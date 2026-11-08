@@ -253,3 +253,17 @@ describe("lookups", () => {
     expect(await repo.spoolHistory(db, "nope")).toEqual([]);
   });
 });
+
+describe("backup reminder", () => {
+  it("counts changes since the last backup", async () => {
+    await pg.exec("UPDATE settings SET last_backup_at = NULL");
+    const a = await repo.createSpool(db, spool());
+    await repo.savePrint(db, print(a));
+    expect((await repo.changesSinceBackup(db)).changes).toBe(2);
+    await repo.markBackedUp(db);
+    expect((await repo.changesSinceBackup(db)).changes).toBe(0);
+    await new Promise((r) => setTimeout(r, 5));
+    await repo.correctSpoolWeight(db, a, 900);
+    expect((await repo.changesSinceBackup(db)).changes).toBe(1);
+  });
+});
