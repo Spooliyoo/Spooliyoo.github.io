@@ -74,7 +74,7 @@ export default function DashboardPage() {
           { label: "Filament in stock", value: formatGrams(d.totalStockG) },
           { label: "Stock value", value: money(d.stockValue) },
         ].map((t) => (
-          <Card key={t.label} className="from-card to-primary-soft bg-gradient-to-br p-3 sm:p-5">
+          <Card key={t.label} className="p-3 sm:p-5">
             <div className="font-display tabular truncate text-xl font-semibold tracking-tight sm:text-4xl">
               {t.value}
             </div>
