@@ -24,4 +24,12 @@ export const MIGRATIONS: { version: number; name: string; statements: string[] }
       'INSERT INTO "settings" ("id") VALUES (1) ON CONFLICT DO NOTHING;',
     ],
   },
+  {
+    version: 2,
+    name: "0001_light_theme_default",
+    statements: [
+      'ALTER TABLE "settings" ALTER COLUMN "theme" SET DEFAULT \'light\';',
+      'UPDATE "settings" SET "theme" = \'light\' WHERE "theme" = \'system\';',
+    ],
+  },
 ];

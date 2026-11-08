@@ -151,7 +151,7 @@ function ToastHost({ children }: { children: React.ReactNode }) {
 
 function ThemeSync() {
   const s = useSettings();
-  const theme = s?.theme ?? "system";
+  const theme = s?.theme ?? "light";
   React.useEffect(() => {
     try {
       localStorage.setItem("ft-theme", theme);

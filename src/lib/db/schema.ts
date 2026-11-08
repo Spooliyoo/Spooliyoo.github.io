@@ -154,7 +154,7 @@ export const settings = pgTable("settings", {
   bufferPct: doublePrecision("buffer_pct").notNull().default(10),
   markupPct: doublePrecision("markup_pct").notNull().default(50),
   lowStockG: doublePrecision("low_stock_g").notNull().default(100),
-  theme: text("theme").notNull().default("system"),
+  theme: text("theme").notNull().default("light"),
   lastBackupAt: ts("last_backup_at"),
   ...audit,
 });

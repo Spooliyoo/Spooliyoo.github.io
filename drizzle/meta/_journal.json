@@ -8,6 +8,13 @@
       "when": 1792986214008,
       "tag": "0000_init",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1794128168690,
+      "tag": "0001_light_theme_default",
+      "breakpoints": true
     }
   ]
 }
