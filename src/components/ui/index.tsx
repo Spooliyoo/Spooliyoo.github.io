@@ -116,7 +116,6 @@ export function CardHeader({
   return (
     <div className={cn("flex items-center justify-between gap-2 px-5 pt-5", className)}>
       <h2 className="flex items-center gap-2 text-xs font-semibold tracking-[0.12em] uppercase">
-        <span aria-hidden className="bg-accent size-1.5 shrink-0 rounded-full" />
         {title}
       </h2>
       {action}
