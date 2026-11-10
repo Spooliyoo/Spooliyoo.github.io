@@ -29,7 +29,8 @@ test("add a spool, log a print, see grams deducted, then use it offline", async 
   // Log a print (spool is pre-selected)
   await page.goto("/prints/new/");
   await page.getByLabel("Model name").fill("Benchy");
-  await page.getByLabel("Print time (h:mm)").fill("1:30");
+  await page.getByLabel("Hours", { exact: true }).fill("1");
+  await page.getByLabel("Minutes", { exact: true }).fill("30");
   await page.getByLabel("Model (g)").fill("100");
   await expect(page.getByLabel("Purge (g)")).toHaveValue("5");
   // live price: 105 g × 1.2 = 126.00 filament

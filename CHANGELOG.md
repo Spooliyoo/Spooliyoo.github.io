@@ -2,7 +2,13 @@
 
 All notable changes are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses [Semantic Versioning](https://semver.org/).
 
-## [1.0.0] — Unreleased
+## [Unreleased]
+
+### Added
+- Multi-part models: log several separately printed parts under one model, with a model page showing all parts and combined filament, time, cost, price and profit.
+- Print time is entered in separate hour and minute boxes (iPhone keypads have no ":" key).
+
+## [1.0.0]
 
 ### Added
 

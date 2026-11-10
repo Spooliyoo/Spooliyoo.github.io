@@ -53,7 +53,7 @@ beforeEach(async () => {
     pg = await PGlite.create();
     db = await createDb(pg);
   }
-  await pg.exec("TRUNCATE photos, print_spools, spool_adjustments, prints, spools");
+  await pg.exec("TRUNCATE photos, print_spools, spool_adjustments, prints, spools, models");
   store = new MemoryPhotoStore();
 });
 
@@ -214,7 +214,7 @@ describe("backup", () => {
     const backup = await exportBackup(db, store);
     const text = JSON.stringify(backup);
 
-    await pg.exec("TRUNCATE photos, print_spools, spool_adjustments, prints, spools");
+    await pg.exec("TRUNCATE photos, print_spools, spool_adjustments, prints, spools, models");
     await store.clear();
 
     const preview = parseBackup(text);
@@ -240,7 +240,7 @@ describe("backup", () => {
     await repo.savePrint(db, print(a, { modelName: 'Box, "large"' }));
     await repo.savePrint(db, print(a, { modelName: "=HYPERLINK(1)" }));
     const csv = await exportPrintsCsv(db);
-    expect(csv.split("\r\n")[0]).toMatch(/^Date,Model,Status/);
+    expect(csv.split("\r\n")[0]).toMatch(/^Date,Model,Part,Status/);
     expect(csv).toContain('"Box, ""large"""');
     expect(csv).toContain("'=HYPERLINK(1)");
   });
@@ -265,5 +265,55 @@ describe("backup reminder", () => {
     await new Promise((r) => setTimeout(r, 5));
     await repo.correctSpoolWeight(db, a, 900);
     expect((await repo.changesSinceBackup(db)).changes).toBe(1);
+  });
+});
+
+describe("multi-part models", () => {
+  it("groups parts under one model with combined totals", async () => {
+    const a = await repo.createSpool(db, spool());
+    const first = await repo.savePrint(
+      db,
+      print(a, { modelName: "Dragon", multiPart: true, partName: "Head", printMinutes: 60 }),
+    );
+    const p1 = (await repo.getPrint(db, first))!;
+    expect(p1.modelId).toBeTruthy();
+    expect(p1.partName).toBe("Head");
+
+    await repo.savePrint(
+      db,
+      print(a, { modelName: "ignored", modelId: p1.modelId, partName: "Body", printMinutes: 90 }),
+    );
+    const m = (await repo.getModel(db, p1.modelId!))!;
+    expect(m.name).toBe("Dragon");
+    expect(m.parts.map((p) => p.partName)).toEqual(["Head", "Body"]);
+    expect(m.parts[1]!.modelName).toBe("Dragon");
+    expect(m.totals.grams).toBe(210);
+    expect(m.totals.minutes).toBe(150);
+    expect((await repo.listModels(db))[0]).toMatchObject({ name: "Dragon", parts: 2 });
+
+    await repo.renameModel(db, m.id, "Fire dragon");
+    expect((await repo.getPrint(db, first))!.modelName).toBe("Fire dragon");
+    await expect(repo.deleteModel(db, m.id)).rejects.toThrow(/parts/);
+  });
+
+  it("requires a part name", async () => {
+    const a = await repo.createSpool(db, spool());
+    await expect(repo.savePrint(db, print(a, { multiPart: true, partName: "" }))).rejects.toThrow();
+  });
+
+  it("upgrades old (v1) backups without models", async () => {
+    const a = await repo.createSpool(db, spool());
+    await repo.savePrint(db, print(a));
+    const b = await exportBackup(db, store);
+    const v1 = JSON.parse(JSON.stringify(b));
+    v1.schemaVersion = 1;
+    delete v1.data.models;
+    for (const p of v1.data.prints) {
+      delete p.modelId;
+      delete p.partName;
+    }
+    const preview = parseBackup(JSON.stringify(v1));
+    expect(preview.backup.data.models).toEqual([]);
+    expect(preview.counts.prints).toBe(1);
   });
 });

@@ -34,28 +34,41 @@ export const printLineSchema = z.object({
   extraG: nonNeg("Extra"),
 });
 
-export const printInputSchema = z.object({
-  modelName: z.string().trim().min(1, "Model name is required").max(200),
-  printedAt: z.string().min(1, "Date is required"),
-  printMinutes: z.number().int().positive("Print time must be more than 0"),
-  status: z.enum(["success", "failed"]),
-  labourMinutes: z.number().int().min(0).default(0),
-  notes: z.string().max(4000).default(""),
-  lines: z
-    .array(printLineSchema)
-    .min(1, "Add at least one spool")
-    .refine((ls) => new Set(ls.map((l) => l.spoolId)).size === ls.length, "Each spool can only be used once"),
-  rates: z.object({
-    electricityRate: nonNeg("Electricity rate"),
-    printerWatts: nonNeg("Printer wattage"),
-    wearRate: nonNeg("Wear rate"),
-    labourRate: nonNeg("Labour rate"),
-    bufferPct: nonNeg("Buffer"),
-    markupPct: nonNeg("Markup"),
-  }),
-  priceOverride: nonNeg("Selling price").nullable().default(null),
-});
-export type PrintInput = z.infer<typeof printInputSchema>;
+export const printInputSchema = z
+  .object({
+    modelName: z.string().trim().min(1, "Model name is required").max(200),
+    printedAt: z.string().min(1, "Date is required"),
+    printMinutes: z.number().int().positive("Print time must be more than 0"),
+    status: z.enum(["success", "failed"]),
+    labourMinutes: z.number().int().min(0).default(0),
+    notes: z.string().max(4000).default(""),
+    lines: z
+      .array(printLineSchema)
+      .min(1, "Add at least one spool")
+      .refine(
+        (ls) => new Set(ls.map((l) => l.spoolId)).size === ls.length,
+        "Each spool can only be used once",
+      ),
+    rates: z.object({
+      electricityRate: nonNeg("Electricity rate"),
+      printerWatts: nonNeg("Printer wattage"),
+      wearRate: nonNeg("Wear rate"),
+      labourRate: nonNeg("Labour rate"),
+      bufferPct: nonNeg("Buffer"),
+      markupPct: nonNeg("Markup"),
+    }),
+    priceOverride: nonNeg("Selling price").nullable().default(null),
+    /** Add this print as a part of an existing multi-part model. */
+    modelId: z.string().uuid().nullable().default(null),
+    /** Start a new multi-part model with this print as its first part. */
+    multiPart: z.boolean().default(false),
+    partName: z.string().trim().max(120).default(""),
+  })
+  .refine((v) => !(v.modelId || v.multiPart) || v.partName.length > 0, {
+    path: ["partName"],
+    message: "Name this part, e.g. Head or Base",
+  });
+export type PrintInput = z.input<typeof printInputSchema>;
 
 export const settingsInputSchema = z.object({
   currency: z

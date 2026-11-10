@@ -134,3 +134,15 @@ describe("helpers", () => {
     expect(parseTimestamp("2026-10-26T03:50:00.000Z")?.toISOString()).toBe("2026-10-26T03:50:00.000Z");
   });
 });
+
+describe("print time boxes", () => {
+  it("combines hours and minutes", async () => {
+    const { durationFromParts } = await import("@/lib/calc");
+    expect(durationFromParts("1", "30")).toBe(90);
+    expect(durationFromParts("", "45")).toBe(45);
+    expect(durationFromParts("2", "")).toBe(120);
+    expect(durationFromParts("", "")).toBeNaN();
+    expect(durationFromParts("1", "60")).toBeNaN();
+    expect(durationFromParts("1.5", "0")).toBeNaN();
+  });
+});

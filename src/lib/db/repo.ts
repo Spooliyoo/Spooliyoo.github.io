@@ -1,6 +1,7 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
 import type { DB } from "./client";
 import {
+  models,
   photos,
   printSpools,
   prints,
@@ -319,7 +320,7 @@ export async function savePrint(
     priceOverride: v.priceOverride,
   });
 
-  const printValues = {
+  const printValues: typeof prints.$inferInsert = {
     modelName: v.modelName,
     printedAt: new Date(v.printedAt).toISOString(),
     printMinutes: v.printMinutes,
@@ -347,11 +348,28 @@ export async function savePrint(
   try {
     if (photoStore) for (const p of preparedPhotos) await photoStore.put(p.id, p.blob);
     const id = await db.transaction(async (tx) => {
+      // Multi-part models: join an existing model, start a new one, or stay a standalone print.
+      let modelId: string | null = null;
+      if (v.modelId) {
+        const m = (
+          await tx
+            .select()
+            .from(models)
+            .where(and(eq(models.id, v.modelId), isNull(models.deletedAt)))
+        )[0];
+        if (!m) throw new UserError("That model no longer exists");
+        modelId = m.id;
+        printValues.modelName = m.name;
+      } else if (v.multiPart) {
+        const [m] = await tx.insert(models).values({ name: v.modelName }).returning({ id: models.id });
+        modelId = m!.id;
+      }
+      const partValues = { modelId, partName: modelId ? v.partName : "" };
       let printId = existingId ?? null;
       if (printId) {
         const res = await tx
           .update(prints)
-          .set({ ...printValues, updatedAt: now() })
+          .set({ ...printValues, ...partValues, updatedAt: now() })
           .where(and(eq(prints.id, printId), isNull(prints.deletedAt)))
           .returning({ id: prints.id });
         if (!res.length) throw new UserError("Print not found");
@@ -360,7 +378,10 @@ export async function savePrint(
           .set({ deletedAt: now(), updatedAt: now() })
           .where(and(eq(printSpools.printId, printId), isNull(printSpools.deletedAt)));
       } else {
-        const [row] = await tx.insert(prints).values(printValues).returning({ id: prints.id });
+        const [row] = await tx
+          .insert(prints)
+          .values({ ...printValues, ...partValues })
+          .returning({ id: prints.id });
         printId = row!.id;
       }
       await tx.insert(printSpools).values(
@@ -459,6 +480,7 @@ export type PrintDetail = NonNullable<Awaited<ReturnType<typeof getPrint>>>;
 
 export interface PrintFilters {
   search?: string;
+  modelId?: string;
   spoolId?: string;
   material?: string;
   status?: "success" | "failed" | "";
@@ -472,6 +494,8 @@ export interface PrintFilters {
 export interface PrintListItem {
   id: string;
   modelName: string;
+  modelId: string | null;
+  partName: string;
   printedAt: string;
   status: string;
   printMinutes: number;
@@ -488,6 +512,7 @@ export async function listPrints(db: DB, f: PrintFilters = {}): Promise<PrintLis
   const conds = [sql`p.deleted_at IS NULL`];
   if (f.search?.trim()) conds.push(sql`p.model_name ILIKE ${"%" + f.search.trim() + "%"}`);
   if (f.status) conds.push(sql`p.status = ${f.status}`);
+  if (f.modelId) conds.push(sql`p.model_id = ${f.modelId}`);
   if (f.from) conds.push(sql`p.printed_at >= ${f.from}`);
   if (f.to) conds.push(sql`p.printed_at < ${f.to}`);
   if (f.spoolId || f.material) {
@@ -499,7 +524,7 @@ export async function listPrints(db: DB, f: PrintFilters = {}): Promise<PrintLis
     );
   }
   const res = await db.execute(sql`
-    SELECT p.id, p.model_name, p.printed_at, p.status, p.print_minutes, p.total_cost, p.selling_price, p.profit,
+    SELECT p.id, p.model_name, p.model_id, p.part_name, p.printed_at, p.status, p.print_minutes, p.total_cost, p.selling_price, p.profit,
       (SELECT coalesce(sum(ps.total_g), 0) FROM print_spools ps WHERE ps.print_id = p.id AND ps.deleted_at IS NULL) AS total_g,
       (SELECT ph.id FROM photos ph WHERE ph.print_id = p.id AND ph.deleted_at IS NULL ORDER BY ph.created_at LIMIT 1) AS thumb_id,
       (SELECT string_agg(s.spool_code, ', ' ORDER BY ps.created_at) FROM print_spools ps JOIN spools s ON s.id = ps.spool_id
@@ -513,6 +538,8 @@ export async function listPrints(db: DB, f: PrintFilters = {}): Promise<PrintLis
   return (res.rows as Record<string, unknown>[]).map((r) => ({
     id: r.id as string,
     modelName: r.model_name as string,
+    modelId: (r.model_id as string | null) ?? null,
+    partName: (r.part_name as string) ?? "",
     printedAt: tsToIso(r.printed_at)!,
     status: r.status as string,
     printMinutes: Number(r.print_minutes),
@@ -564,3 +591,71 @@ export async function getDashboard(db: DB, at = new Date()) {
   };
 }
 export type Dashboard = Awaited<ReturnType<typeof getDashboard>>;
+
+// ---------- Multi-part models ----------
+
+export interface ModelSummary {
+  id: string;
+  name: string;
+  parts: number;
+  lastPrintedAt: string | null;
+}
+
+export async function listModels(db: DB): Promise<ModelSummary[]> {
+  const res = await db.execute(sql`
+    SELECT m.id, m.name, count(p.id) AS parts, max(p.printed_at) AS last
+    FROM models m LEFT JOIN prints p ON p.model_id = m.id AND p.deleted_at IS NULL
+    WHERE m.deleted_at IS NULL
+    GROUP BY m.id ORDER BY max(coalesce(p.printed_at, m.created_at)) DESC`);
+  return (res.rows as Record<string, unknown>[]).map((r) => ({
+    id: r.id as string,
+    name: r.name as string,
+    parts: Number(r.parts),
+    lastPrintedAt: tsToIso(r.last),
+  }));
+}
+
+/** A model with all its parts and the combined totals. */
+export async function getModel(db: DB, id: string) {
+  if (!isUuid(id)) return null;
+  const m = (
+    await db
+      .select()
+      .from(models)
+      .where(and(eq(models.id, id), isNull(models.deletedAt)))
+  )[0];
+  if (!m) return null;
+  const parts = (await listPrints(db, { modelId: id })).reverse(); // oldest part first
+  const sum = (k: "totalG" | "printMinutes" | "totalCost" | "sellingPrice" | "profit") =>
+    round2(parts.reduce((s, p) => s + p[k], 0));
+  return {
+    ...m,
+    parts,
+    totals: {
+      grams: sum("totalG"),
+      minutes: sum("printMinutes"),
+      cost: sum("totalCost"),
+      price: sum("sellingPrice"),
+      profit: sum("profit"),
+      failed: parts.filter((p) => p.status === "failed").length,
+    },
+  };
+}
+export type ModelDetail = NonNullable<Awaited<ReturnType<typeof getModel>>>;
+
+export async function renameModel(db: DB, id: string, name: string): Promise<void> {
+  const n = name.trim();
+  if (!n) throw new UserError("Model name is required");
+  await db.transaction(async (tx) => {
+    await tx.update(models).set({ name: n, updatedAt: now() }).where(eq(models.id, id));
+    await tx.update(prints).set({ modelName: n, updatedAt: now() }).where(eq(prints.modelId, id));
+  });
+}
+
+/** Only a model with no parts left can be deleted. */
+export async function deleteModel(db: DB, id: string): Promise<void> {
+  const m = await getModel(db, id);
+  if (!m) return;
+  if (m.parts.length) throw new UserError("Delete its parts first.");
+  await db.update(models).set({ deletedAt: now(), updatedAt: now() }).where(eq(models.id, id));
+}

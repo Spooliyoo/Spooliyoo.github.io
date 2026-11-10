@@ -6,14 +6,21 @@ import { AlertTriangle, Camera, ImagePlus, Plus, Save, Trash2, X, ChevronDown } 
 import { useApp, useMoney, useToast, useWrite } from "./providers";
 import { Alert, Button, Card, CardHeader, Field, Input, Select, Swatch, Textarea } from "./ui";
 import { PhotoImg } from "./shared";
-import { listSpools, savePrint, type NewPhoto, type PrintDetail, type SpoolWithStats } from "@/lib/db/repo";
+import {
+  listModels,
+  listSpools,
+  savePrint,
+  type ModelSummary,
+  type NewPhoto,
+  type PrintDetail,
+  type SpoolWithStats,
+} from "@/lib/db/repo";
 import type { Settings } from "@/lib/db/schema";
 import {
   calculatePrice,
-  formatDuration,
+  durationFromParts,
   formatGrams,
   lineTotalG,
-  parseDuration,
   parseTimestamp,
   type Rates,
 } from "@/lib/calc";
@@ -49,10 +56,12 @@ export function PrintForm({
   settings,
   existing,
   presetSpoolId,
+  presetModelId,
 }: {
   settings: Settings;
   existing?: PrintDetail;
   presetSpoolId?: string | null;
+  presetModelId?: string | null;
 }) {
   const router = useRouter();
   const { db, photos: photoStore } = useApp();
@@ -65,7 +74,14 @@ export function PrintForm({
   const [printedAt, setPrintedAt] = React.useState(
     toLocalInput(parseTimestamp(existing?.printedAt) ?? new Date()),
   );
-  const [printTime, setPrintTime] = React.useState(existing ? formatDuration(existing.printMinutes) : "");
+  // Separate hour and minute boxes: iPhone number keypads have no ":" key.
+  const [hours, setHours] = React.useState(existing ? String(Math.floor(existing.printMinutes / 60)) : "");
+  const [mins, setMins] = React.useState(existing ? String(existing.printMinutes % 60) : "");
+  // Multi-part models
+  const [models, setModels] = React.useState<ModelSummary[]>([]);
+  const [modelChoice, setModelChoice] = React.useState<string>(existing?.modelId ?? presetModelId ?? "");
+  const [multiPart, setMultiPart] = React.useState(false);
+  const [partName, setPartName] = React.useState(existing?.partName ?? "");
   const [status, setStatus] = React.useState<"success" | "failed">(
     (existing?.status as "success" | "failed") ?? "success",
   );
@@ -123,6 +139,10 @@ export function PrintForm({
     });
   }, [db, existing, presetSpoolId]);
 
+  React.useEffect(() => {
+    listModels(db).then(setModels);
+  }, [db]);
+
   React.useEffect(() => () => newPhotos.forEach((p) => URL.revokeObjectURL(p.url)), []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const spoolById = React.useMemo(() => new Map((spools ?? []).map((s) => [s.id, s])), [spools]);
@@ -136,7 +156,7 @@ export function PrintForm({
   );
 
   const failed = status === "failed";
-  const minutes = parseDuration(printTime);
+  const minutes = durationFromParts(hours, mins);
   const rateNums = Object.fromEntries(
     rateFields.map((f) => [f.key, num(rates[f.key], 0)]),
   ) as unknown as Rates;
@@ -193,7 +213,10 @@ export function PrintForm({
     e.preventDefault();
     setFormError(null);
     const input: PrintInput = {
-      modelName,
+      modelName: modelChoice ? (models.find((m) => m.id === modelChoice)?.name ?? modelName) : modelName,
+      modelId: modelChoice || null,
+      multiPart: !modelChoice && multiPart,
+      partName,
       printedAt: printedAt ? new Date(printedAt).toISOString() : "",
       printMinutes: Number.isFinite(minutes) ? minutes : NaN,
       status,
@@ -211,10 +234,10 @@ export function PrintForm({
         if (!errs[k]) errs[k] = i.message;
       }
       if (errs.printMinutes || !Number.isFinite(minutes))
-        errs.printMinutes = "Enter print time as h:mm, e.g. 1:45";
+        errs.printMinutes = "Enter hours and/or minutes (minutes 0–59)";
       setErrors(errs);
       const first = Object.keys(errs)[0];
-      document.getElementById(first === "printMinutes" ? "printTime" : (first ?? ""))?.focus();
+      document.getElementById(first === "printMinutes" ? "printHours" : (first ?? ""))?.focus();
       return;
     }
     setErrors({});
@@ -249,31 +272,112 @@ export function PrintForm({
       {formError && <Alert variant="danger">{formError}</Alert>}
 
       <Card className="grid gap-4 p-4 sm:grid-cols-2">
-        <Field label="Model name" htmlFor="modelName" error={errors.modelName} className="sm:col-span-2">
-          <Input
-            id="modelName"
-            autoFocus={!existing}
-            value={modelName}
-            onChange={(e) => setModelName(e.target.value)}
-            aria-invalid={!!errors.modelName}
-            placeholder="e.g. Articulated dragon"
-          />
-        </Field>
-        <Field
-          label="Print time (h:mm)"
-          htmlFor="printTime"
-          error={errors.printMinutes}
-          hint="From your slicer"
-        >
-          <Input
-            id="printTime"
-            inputMode="numeric"
-            placeholder="1:45"
-            value={printTime}
-            onChange={(e) => setPrintTime(e.target.value)}
-            aria-invalid={!!errors.printMinutes}
-          />
-        </Field>
+        {models.length > 0 && (
+          <Field
+            label="Model"
+            htmlFor="modelChoice"
+            className="sm:col-span-2"
+            hint={modelChoice ? "This print is added as another part of that model." : undefined}
+          >
+            <Select id="modelChoice" value={modelChoice} onChange={(e) => setModelChoice(e.target.value)}>
+              <option value="">New model</option>
+              {models.map((m) => (
+                <option key={m.id} value={m.id}>
+                  Add part to: {m.name} ({m.parts} {m.parts === 1 ? "part" : "parts"})
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
+        {!modelChoice && (
+          <Field label="Model name" htmlFor="modelName" error={errors.modelName} className="sm:col-span-2">
+            <Input
+              id="modelName"
+              autoFocus={!existing}
+              value={modelName}
+              onChange={(e) => setModelName(e.target.value)}
+              aria-invalid={!!errors.modelName}
+              placeholder="e.g. Articulated dragon"
+            />
+          </Field>
+        )}
+        {!modelChoice && !existing?.modelId && (
+          <label className="flex items-center gap-2 text-sm sm:col-span-2">
+            <input
+              type="checkbox"
+              className="accent-primary size-4"
+              checked={multiPart}
+              onChange={(e) => setMultiPart(e.target.checked)}
+            />
+            This model has several parts printed separately
+          </label>
+        )}
+        {(modelChoice || multiPart) && (
+          <Field
+            label="Part name"
+            htmlFor="partName"
+            error={errors.partName}
+            className="sm:col-span-2"
+            hint="e.g. Head, Body, Base"
+          >
+            <Input
+              id="partName"
+              autoFocus={!!modelChoice && !existing}
+              value={partName}
+              onChange={(e) => setPartName(e.target.value)}
+              aria-invalid={!!errors.partName}
+            />
+          </Field>
+        )}
+        <fieldset className="flex flex-col gap-1.5">
+          <legend className="mb-1.5 text-sm font-medium">Print time</legend>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="relative">
+              <Input
+                id="printHours"
+                aria-label="Hours"
+                type="number"
+                inputMode="numeric"
+                min={0}
+                step={1}
+                placeholder="0"
+                className="pr-10"
+                value={hours}
+                onChange={(e) => setHours(e.target.value)}
+                aria-invalid={!!errors.printMinutes}
+              />
+              <span className="text-muted-foreground pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-sm">
+                h
+              </span>
+            </div>
+            <div className="relative">
+              <Input
+                id="printMins"
+                aria-label="Minutes"
+                type="number"
+                inputMode="numeric"
+                min={0}
+                max={59}
+                step={1}
+                placeholder="0"
+                className="pr-12"
+                value={mins}
+                onChange={(e) => setMins(e.target.value)}
+                aria-invalid={!!errors.printMinutes}
+              />
+              <span className="text-muted-foreground pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-sm">
+                min
+              </span>
+            </div>
+          </div>
+          {errors.printMinutes ? (
+            <p className="text-danger text-xs" role="alert">
+              {errors.printMinutes}
+            </p>
+          ) : (
+            <p className="text-muted-foreground text-xs">From your slicer</p>
+          )}
+        </fieldset>
         <Field label="Date" htmlFor="printedAt" error={errors.printedAt}>
           <Input
             id="printedAt"

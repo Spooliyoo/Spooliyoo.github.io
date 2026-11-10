@@ -46,11 +46,23 @@ export const spools = pgTable(
   ],
 );
 
+/** A model made of several separately printed parts (e.g. head, body, base). Single-part prints have no model row. */
+export const models = pgTable("models", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  notes: text("notes").notNull().default(""),
+  ...audit,
+  deletedAt: ts("deleted_at"),
+});
+
 export const prints = pgTable(
   "prints",
   {
     id: uuid("id").primaryKey().defaultRandom(),
     modelName: text("model_name").notNull(),
+    /** Set when this print is one part of a multi-part model. */
+    modelId: uuid("model_id").references(() => models.id),
+    partName: text("part_name").notNull().default(""),
     printedAt: ts("printed_at").notNull(),
     printMinutes: integer("print_minutes").notNull(),
     status: text("status").notNull().default("success"),
@@ -162,6 +174,7 @@ export const settings = pgTable("settings", {
 export type Spool = typeof spools.$inferSelect;
 export type NewSpool = typeof spools.$inferInsert;
 export type Print = typeof prints.$inferSelect;
+export type Model = typeof models.$inferSelect;
 export type PrintSpool = typeof printSpools.$inferSelect;
 export type SpoolAdjustment = typeof spoolAdjustments.$inferSelect;
 export type Photo = typeof photos.$inferSelect;

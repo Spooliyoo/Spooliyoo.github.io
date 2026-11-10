@@ -32,4 +32,15 @@ export const MIGRATIONS: { version: number; name: string; statements: string[] }
       'UPDATE "settings" SET "theme" = \'light\' WHERE "theme" = \'system\';',
     ],
   },
+  {
+    version: 3,
+    name: "0002_multipart_models",
+    statements: [
+      'CREATE TABLE "models" (\n\t"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,\n\t"name" text NOT NULL,\n\t"notes" text DEFAULT \'\' NOT NULL,\n\t"created_at" timestamp with time zone DEFAULT now() NOT NULL,\n\t"updated_at" timestamp with time zone DEFAULT now() NOT NULL,\n\t"deleted_at" timestamp with time zone\n);',
+      'ALTER TABLE "prints" ADD COLUMN "model_id" uuid;',
+      'ALTER TABLE "prints" ADD COLUMN "part_name" text DEFAULT \'\' NOT NULL;',
+      'ALTER TABLE "prints" ADD CONSTRAINT "prints_model_id_models_id_fk" FOREIGN KEY ("model_id") REFERENCES "public"."models"("id") ON DELETE no action ON UPDATE no action;',
+      'CREATE INDEX "prints_model_idx" ON "prints" ("model_id");',
+    ],
+  },
 ];

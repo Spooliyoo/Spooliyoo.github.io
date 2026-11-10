@@ -15,6 +15,13 @@
       "when": 1794128168690,
       "tag": "0001_light_theme_default",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794321768775,
+      "tag": "0002_multipart_models",
+      "breakpoints": true
     }
   ]
 }

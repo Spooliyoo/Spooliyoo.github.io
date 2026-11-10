@@ -43,7 +43,7 @@ function PrintDetailPage() {
   return (
     <div className="flex flex-col gap-4">
       <PageHeader
-        title={p.modelName}
+        title={p.partName ? `${p.modelName} — ${p.partName}` : p.modelName}
         back={<BackButton fallback="/prints/" />}
         actions={
           <Link
@@ -68,6 +68,18 @@ function PrintDetailPage() {
             </button>
           ))}
         </div>
+      )}
+
+      {p.modelId && (
+        <Link
+          href={`/models/view/?id=${p.modelId}`}
+          className="bg-primary-soft text-primary flex items-center justify-between rounded-2xl px-4 py-3 text-sm font-medium"
+        >
+          <span>
+            Part <b>{p.partName}</b> of <b>{p.modelName}</b>
+          </span>
+          <span>All parts →</span>
+        </Link>
       )}
 
       <Card className="grid grid-cols-2 gap-4 p-4 sm:grid-cols-4">
@@ -145,10 +157,12 @@ function PrintDetailPage() {
           <Trash2 /> Delete print
         </Button>
         <Link
-          href={`/prints/new/?spool=${p.lines[0]?.spoolId ?? ""}`}
+          href={
+            p.modelId ? `/prints/new/?model=${p.modelId}` : `/prints/new/?spool=${p.lines[0]?.spoolId ?? ""}`
+          }
           className={buttonVariants({ variant: "ghost" })}
         >
-          <Copy /> Log another
+          <Copy /> {p.modelId ? "Add another part" : "Log another"}
         </Link>
       </div>
 

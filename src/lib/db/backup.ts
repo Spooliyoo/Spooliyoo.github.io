@@ -1,14 +1,14 @@
 import { z } from "zod";
 import { sql } from "drizzle-orm";
 import type { DB } from "./client";
-import { photos, printSpools, prints, settings, spoolAdjustments, spools } from "./schema";
+import { models, photos, printSpools, prints, settings, spoolAdjustments, spools } from "./schema";
 import type { PhotoStore } from "./photo-store";
 import { listPrints } from "./repo";
 import { formatDuration } from "../calc";
 
 export const BACKUP_FORMAT = "filament-tracker-backup";
 /** Bump when the backup shape changes, and add a step to MIGRATE_BACKUP below. */
-export const BACKUP_SCHEMA_VERSION = 1;
+export const BACKUP_SCHEMA_VERSION = 2;
 
 // ---------- base64 helpers (work in browsers and Node) ----------
 
@@ -30,7 +30,8 @@ export function base64ToBlob(b64: string, type: string): Blob {
 // ---------- Export ----------
 
 export async function exportBackup(db: DB, store: PhotoStore) {
-  const [sp, pr, ps, adj, ph, st] = await Promise.all([
+  const [md, sp, pr, ps, adj, ph, st] = await Promise.all([
+    db.select().from(models),
     db.select().from(spools),
     db.select().from(prints),
     db.select().from(printSpools),
@@ -49,6 +50,7 @@ export async function exportBackup(db: DB, store: PhotoStore) {
     schemaVersion: BACKUP_SCHEMA_VERSION,
     exportedAt: new Date().toISOString(),
     data: {
+      models: md,
       spools: sp,
       prints: pr,
       printSpools: ps,
@@ -86,6 +88,8 @@ const spoolZ = z.object({
 const printZ = z.object({
   id: z.string().uuid(),
   modelName: z.string(),
+  modelId: z.string().uuid().nullable(),
+  partName: z.string(),
   printedAt: z.string(),
   printMinutes: z.number().int(),
   status: z.string(),
@@ -163,11 +167,20 @@ const settingsZ = z.object({
   createdAt: z.string(),
   updatedAt: z.string(),
 });
+const modelZ = z.object({
+  id: z.string().uuid(),
+  name: z.string(),
+  notes: z.string(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  deletedAt: tsz,
+});
 const backupZ = z.object({
   format: z.literal(BACKUP_FORMAT),
   schemaVersion: z.literal(BACKUP_SCHEMA_VERSION),
   exportedAt: z.string(),
   data: z.object({
+    models: z.array(modelZ),
     spools: z.array(spoolZ),
     prints: z.array(printZ),
     printSpools: z.array(printSpoolZ),
@@ -180,7 +193,16 @@ export type ValidBackup = z.infer<typeof backupZ>;
 
 /** Upgrades older backup shapes step by step: MIGRATE_BACKUP[n] turns version n into n+1. */
 const MIGRATE_BACKUP: Record<number, (b: Record<string, unknown>) => Record<string, unknown>> = {
-  // 1: (b) => ({ ...b, schemaVersion: 2, data: { ...b.data, newTable: [] } }),
+  // v1 → v2: multi-part models added.
+  1: (b) => {
+    const data = (b.data ?? {}) as Record<string, unknown>;
+    const printsV1 = Array.isArray(data.prints) ? (data.prints as Record<string, unknown>[]) : [];
+    return {
+      ...b,
+      schemaVersion: 2,
+      data: { ...data, models: [], prints: printsV1.map((p) => ({ modelId: null, partName: "", ...p })) },
+    };
+  },
 };
 
 export function migrateBackup(raw: unknown): unknown {
@@ -247,6 +269,8 @@ export async function importBackup(db: DB, store: PhotoStore, b: ValidBackup): P
     await tx.execute(sql`DELETE FROM spool_adjustments`);
     await tx.execute(sql`DELETE FROM prints`);
     await tx.execute(sql`DELETE FROM spools`);
+    await tx.execute(sql`DELETE FROM models`);
+    for (const c of chunks(d.models)) await tx.insert(models).values(c);
     for (const c of chunks(d.spools)) await tx.insert(spools).values(c);
     for (const c of chunks(d.prints)) await tx.insert(prints).values(c);
     for (const c of chunks(d.printSpools)) await tx.insert(printSpools).values(c);
@@ -279,6 +303,7 @@ export async function exportPrintsCsv(db: DB): Promise<string> {
   const header = [
     "Date",
     "Model",
+    "Part",
     "Status",
     "Spools",
     "Filament (g)",
@@ -291,6 +316,7 @@ export async function exportPrintsCsv(db: DB): Promise<string> {
     [
       r.printedAt.slice(0, 10),
       r.modelName,
+      r.partName,
       r.status,
       r.spoolLabels,
       r.totalG,

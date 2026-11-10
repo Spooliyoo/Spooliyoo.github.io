@@ -34,7 +34,7 @@ test("weight correction, multi-spool print, edit, delete and backup restore", as
   // Two-spool print; purge defaults onto the first spool
   await page.goto("/prints/new/");
   await page.getByLabel("Model name").fill("Two-tone vase");
-  await page.getByLabel("Print time (h:mm)").fill("2:00");
+  await page.getByLabel("Hours", { exact: true }).fill("2");
   await selectByText(page, "Spool", "PETG-1");
   await page.getByLabel("Model (g)").fill("50");
   await page.getByRole("button", { name: "Add another spool" }).click();

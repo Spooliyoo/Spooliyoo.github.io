@@ -140,3 +140,14 @@ export function parseTimestamp(v: string | Date | null | undefined): Date | null
   const d = new Date(s);
   return Number.isNaN(d.getTime()) ? null : d;
 }
+
+/** Hours + minutes boxes → total minutes. Blank counts as 0; both blank, decimals or minutes ≥ 60 → NaN. */
+export function durationFromParts(hours: string, minutes: string): number {
+  const h = hours.trim();
+  const m = minutes.trim();
+  if (!h && !m) return NaN;
+  const hn = h ? Number(h) : 0;
+  const mn = m ? Number(m) : 0;
+  if (!Number.isInteger(hn) || !Number.isInteger(mn) || hn < 0 || mn < 0 || mn > 59) return NaN;
+  return hn * 60 + mn;
+}

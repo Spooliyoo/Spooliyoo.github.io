@@ -115,9 +115,7 @@ export function CardHeader({
 }) {
   return (
     <div className={cn("flex items-center justify-between gap-2 px-5 pt-5", className)}>
-      <h2 className="flex items-center gap-2 text-xs font-semibold tracking-[0.12em] uppercase">
-        {title}
-      </h2>
+      <h2 className="flex items-center gap-2 text-xs font-semibold tracking-[0.12em] uppercase">{title}</h2>
       {action}
     </div>
   );

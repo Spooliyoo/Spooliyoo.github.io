@@ -17,6 +17,7 @@ const ROUTES = [
   "/prints/new/",
   "/prints/view/",
   "/prints/edit/",
+  "/models/view/",
   "/settings/",
 ];
 const revision = randomUUID();
