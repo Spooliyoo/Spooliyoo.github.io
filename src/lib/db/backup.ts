@@ -1,14 +1,24 @@
 import { z } from "zod";
 import { sql } from "drizzle-orm";
 import type { DB } from "./client";
-import { models, photos, printSpools, prints, settings, spoolAdjustments, spools } from "./schema";
+import {
+  models,
+  photos,
+  printParts,
+  printSpools,
+  prints,
+  settings,
+  spoolAdjustments,
+  spools,
+} from "./schema";
+import { LEGACY_MODEL_CONVERSION } from "./legacy";
 import type { PhotoStore } from "./photo-store";
 import { listPrints } from "./repo";
 import { formatDuration } from "../calc";
 
 export const BACKUP_FORMAT = "filament-tracker-backup";
 /** Bump when the backup shape changes, and add a step to MIGRATE_BACKUP below. */
-export const BACKUP_SCHEMA_VERSION = 2;
+export const BACKUP_SCHEMA_VERSION = 3;
 
 // ---------- base64 helpers (work in browsers and Node) ----------
 
@@ -30,10 +40,11 @@ export function base64ToBlob(b64: string, type: string): Blob {
 // ---------- Export ----------
 
 export async function exportBackup(db: DB, store: PhotoStore) {
-  const [md, sp, pr, ps, adj, ph, st] = await Promise.all([
+  const [md, sp, pr, pp, ps, adj, ph, st] = await Promise.all([
     db.select().from(models),
     db.select().from(spools),
     db.select().from(prints),
+    db.select().from(printParts),
     db.select().from(printSpools),
     db.select().from(spoolAdjustments),
     db.select().from(photos),
@@ -51,6 +62,7 @@ export async function exportBackup(db: DB, store: PhotoStore) {
     exportedAt: new Date().toISOString(),
     data: {
       models: md,
+      printParts: pp,
       spools: sp,
       prints: pr,
       printSpools: ps,
@@ -114,10 +126,21 @@ const printZ = z.object({
   updatedAt: z.string(),
   deletedAt: tsz,
 });
+const printPartZ = z.object({
+  id: z.string().uuid(),
+  printId: z.string().uuid(),
+  name: z.string(),
+  printMinutes: z.number().int(),
+  sortOrder: z.number().int(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  deletedAt: tsz,
+});
 const printSpoolZ = z.object({
   id: z.string().uuid(),
   printId: z.string().uuid(),
   spoolId: z.string().uuid(),
+  partId: z.string().uuid().nullable(),
   modelG: num,
   purgeG: num,
   extraG: num,
@@ -181,6 +204,7 @@ const backupZ = z.object({
   exportedAt: z.string(),
   data: z.object({
     models: z.array(modelZ),
+    printParts: z.array(printPartZ),
     spools: z.array(spoolZ),
     prints: z.array(printZ),
     printSpools: z.array(printSpoolZ),
@@ -201,6 +225,16 @@ const MIGRATE_BACKUP: Record<number, (b: Record<string, unknown>) => Record<stri
       ...b,
       schemaVersion: 2,
       data: { ...data, models: [], prints: printsV1.map((p) => ({ modelId: null, partName: "", ...p })) },
+    };
+  },
+  // v2 → v3: parts inside a print (print_parts table, part link on each filament line).
+  2: (b) => {
+    const data = (b.data ?? {}) as Record<string, unknown>;
+    const lines = Array.isArray(data.printSpools) ? (data.printSpools as Record<string, unknown>[]) : [];
+    return {
+      ...b,
+      schemaVersion: 3,
+      data: { ...data, printParts: [], printSpools: lines.map((l) => ({ partId: null, ...l })) },
     };
   },
 };
@@ -266,6 +300,7 @@ export async function importBackup(db: DB, store: PhotoStore, b: ValidBackup): P
   await db.transaction(async (tx) => {
     await tx.execute(sql`DELETE FROM photos`);
     await tx.execute(sql`DELETE FROM print_spools`);
+    await tx.execute(sql`DELETE FROM print_parts`);
     await tx.execute(sql`DELETE FROM spool_adjustments`);
     await tx.execute(sql`DELETE FROM prints`);
     await tx.execute(sql`DELETE FROM spools`);
@@ -273,10 +308,14 @@ export async function importBackup(db: DB, store: PhotoStore, b: ValidBackup): P
     for (const c of chunks(d.models)) await tx.insert(models).values(c);
     for (const c of chunks(d.spools)) await tx.insert(spools).values(c);
     for (const c of chunks(d.prints)) await tx.insert(prints).values(c);
+    for (const c of chunks(d.printParts)) await tx.insert(printParts).values(c);
     for (const c of chunks(d.printSpools)) await tx.insert(printSpools).values(c);
     for (const c of chunks(d.spoolAdjustments)) await tx.insert(spoolAdjustments).values(c);
     const ph = d.photos.map(({ dataBase64: _ignored, ...rest }) => rest);
     for (const c of chunks(ph)) await tx.insert(photos).values(c);
+    // Backups from the old multi-print model format are converted to prints with parts.
+    if (d.prints.some((p) => p.modelId && !p.deletedAt))
+      for (const stmt of LEGACY_MODEL_CONVERSION) await tx.execute(sql.raw(stmt));
     if (d.settings) {
       const { id: _id, ...st } = d.settings;
       await tx
@@ -303,7 +342,7 @@ export async function exportPrintsCsv(db: DB): Promise<string> {
   const header = [
     "Date",
     "Model",
-    "Part",
+    "Parts",
     "Status",
     "Spools",
     "Filament (g)",
@@ -316,7 +355,7 @@ export async function exportPrintsCsv(db: DB): Promise<string> {
     [
       r.printedAt.slice(0, 10),
       r.modelName,
-      r.partName,
+      r.partNames.join(" + "),
       r.status,
       r.spoolLabels,
       r.totalG,

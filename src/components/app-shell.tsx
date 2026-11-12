@@ -2,16 +2,18 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { History, LayoutDashboard, Plus, Settings, Disc3 } from "lucide-react";
+import { Box, Disc3, History, LayoutDashboard, Plus, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { InstallButton } from "./pwa";
+import { AppLogo } from "./logo";
 
 const NAV = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/spools/", label: "Spools", icon: Disc3 },
   { href: "/prints/new/", label: "Log print", icon: Plus, primary: true },
-  { href: "/prints/", label: "History", icon: History },
-  { href: "/settings/", label: "Settings", icon: Settings },
+  { href: "/prints/", label: "Prints", icon: Box },
+  { href: "/history/", label: "History", icon: History },
+  { href: "/settings/", label: "Settings", icon: Settings, desktopOnly: true },
 ] as const;
 
 function isActive(path: string, href: string) {
@@ -37,7 +39,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           href="/"
           className="font-display mb-6 flex items-center gap-2 px-2 py-1 text-lg font-semibold tracking-tight"
         >
-          <Disc3 className="text-primary size-6" /> Spooliyoo
+          <AppLogo className="size-8" /> Spooliyoo
         </Link>
         {NAV.map(({ href, label, icon: Icon, ...rest }) => (
           <Link
@@ -62,21 +64,37 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           href="/"
           className="font-display flex items-center gap-2 text-base font-semibold tracking-tight"
         >
-          <Disc3 className="text-primary size-5" /> Spooliyoo
+          <AppLogo className="size-7" /> Spooliyoo
         </Link>
-        <InstallButton size="sm" />
+        <div className="flex items-center gap-1">
+          <InstallButton size="sm" />
+          <Link
+            href="/settings/"
+            aria-label="Settings"
+            aria-current={isActive(path, "/settings/") ? "page" : undefined}
+            className={cn(
+              "hover:bg-muted flex size-9 items-center justify-center rounded-full",
+              isActive(path, "/settings/") ? "text-primary" : "text-muted-foreground",
+            )}
+          >
+            <Settings className="size-5" />
+          </Link>
+        </div>
       </header>
 
-      <main id="main" className="mx-auto w-full max-w-4xl flex-1 px-4 pt-4 pb-28 md:px-8 md:pt-8 md:pb-10">
+      <main
+        id="main"
+        className="mx-auto w-full max-w-4xl flex-1 px-4 pt-4 pb-[calc(10rem+env(safe-area-inset-bottom))] md:px-8 md:pt-8 md:pb-28"
+      >
         {children}
       </main>
 
       {/* Mobile bottom navigation */}
       <nav
         aria-label="Main"
-        className="bg-card/95 fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
+        className="bg-card/95 fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t pb-[calc(0.5rem+env(safe-area-inset-bottom))] backdrop-blur md:hidden"
       >
-        {NAV.map(({ href, label, icon: Icon, ...rest }) => {
+        {NAV.filter((n) => !("desktopOnly" in n)).map(({ href, label, icon: Icon, ...rest }) => {
           const active = isActive(path, href);
           if ("primary" in rest)
             return (

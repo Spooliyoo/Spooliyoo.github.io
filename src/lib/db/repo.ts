@@ -1,8 +1,8 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
 import type { DB } from "./client";
 import {
-  models,
   photos,
+  printParts,
   printSpools,
   prints,
   settings,
@@ -311,9 +311,11 @@ export async function savePrint(
     return { ...l, costPerG, totalG: lineTotalG(l) };
   });
   const failed = v.status === "failed";
+  // Multi-part prints: total time is the sum of the parts' times.
+  const totalMinutes = v.parts.length ? v.parts.reduce((s, p) => s + p.printMinutes, 0) : v.printMinutes;
   const price = calculatePrice({
     lines,
-    printMinutes: v.printMinutes,
+    printMinutes: totalMinutes,
     labourMinutes: v.labourMinutes,
     rates: v.rates,
     failed,
@@ -323,7 +325,7 @@ export async function savePrint(
   const printValues: typeof prints.$inferInsert = {
     modelName: v.modelName,
     printedAt: new Date(v.printedAt).toISOString(),
-    printMinutes: v.printMinutes,
+    printMinutes: totalMinutes,
     status: v.status,
     labourMinutes: v.labourMinutes,
     ...v.rates,
@@ -348,28 +350,11 @@ export async function savePrint(
   try {
     if (photoStore) for (const p of preparedPhotos) await photoStore.put(p.id, p.blob);
     const id = await db.transaction(async (tx) => {
-      // Multi-part models: join an existing model, start a new one, or stay a standalone print.
-      let modelId: string | null = null;
-      if (v.modelId) {
-        const m = (
-          await tx
-            .select()
-            .from(models)
-            .where(and(eq(models.id, v.modelId), isNull(models.deletedAt)))
-        )[0];
-        if (!m) throw new UserError("That model no longer exists");
-        modelId = m.id;
-        printValues.modelName = m.name;
-      } else if (v.multiPart) {
-        const [m] = await tx.insert(models).values({ name: v.modelName }).returning({ id: models.id });
-        modelId = m!.id;
-      }
-      const partValues = { modelId, partName: modelId ? v.partName : "" };
       let printId = existingId ?? null;
       if (printId) {
         const res = await tx
           .update(prints)
-          .set({ ...printValues, ...partValues, updatedAt: now() })
+          .set({ ...printValues, updatedAt: now() })
           .where(and(eq(prints.id, printId), isNull(prints.deletedAt)))
           .returning({ id: prints.id });
         if (!res.length) throw new UserError("Print not found");
@@ -377,17 +362,36 @@ export async function savePrint(
           .update(printSpools)
           .set({ deletedAt: now(), updatedAt: now() })
           .where(and(eq(printSpools.printId, printId), isNull(printSpools.deletedAt)));
+        await tx
+          .update(printParts)
+          .set({ deletedAt: now(), updatedAt: now() })
+          .where(and(eq(printParts.printId, printId), isNull(printParts.deletedAt)));
       } else {
-        const [row] = await tx
-          .insert(prints)
-          .values({ ...printValues, ...partValues })
-          .returning({ id: prints.id });
+        const [row] = await tx.insert(prints).values(printValues).returning({ id: prints.id });
         printId = row!.id;
       }
+      const partIds = v.parts.length
+        ? (
+            await tx
+              .insert(printParts)
+              .values(
+                v.parts.map((p, i) => ({
+                  printId: printId!,
+                  name: p.name,
+                  printMinutes: p.printMinutes,
+                  sortOrder: i,
+                })),
+              )
+              .returning({ id: printParts.id, sortOrder: printParts.sortOrder })
+          )
+            .sort((a, b) => a.sortOrder - b.sortOrder)
+            .map((p) => p.id)
+        : [];
       await tx.insert(printSpools).values(
         lines.map((l) => ({
           printId: printId!,
           spoolId: l.spoolId,
+          partId: l.partIndex != null ? partIds[l.partIndex] : null,
           modelG: l.modelG,
           purgeG: l.purgeG,
           extraG: l.extraG,
@@ -424,22 +428,28 @@ export async function savePrint(
   }
 }
 
-/** Soft-deletes a print with its usage lines and photos; spools' remaining grams recalculate automatically. */
-export async function deletePrint(db: DB, id: string, photoStore?: PhotoStore): Promise<void> {
+/**
+ * Moves a print to Recently deleted: soft-deletes it with its parts, usage lines and photos (all with the
+ * same timestamp, so a restore brings back exactly these rows). Spools get the grams back immediately.
+ * Photo files are kept until the print is deleted forever.
+ */
+export async function deletePrint(db: DB, id: string): Promise<void> {
   const ts = now();
-  const removed = await db.transaction(async (tx) => {
+  await db.transaction(async (tx) => {
     await tx.update(prints).set({ deletedAt: ts, updatedAt: ts }).where(eq(prints.id, id));
     await tx
       .update(printSpools)
       .set({ deletedAt: ts, updatedAt: ts })
       .where(and(eq(printSpools.printId, id), isNull(printSpools.deletedAt)));
-    return tx
+    await tx
+      .update(printParts)
+      .set({ deletedAt: ts, updatedAt: ts })
+      .where(and(eq(printParts.printId, id), isNull(printParts.deletedAt)));
+    await tx
       .update(photos)
       .set({ deletedAt: ts, updatedAt: ts })
-      .where(and(eq(photos.printId, id), isNull(photos.deletedAt)))
-      .returning({ id: photos.id });
+      .where(and(eq(photos.printId, id), isNull(photos.deletedAt)));
   });
-  if (photoStore) for (const p of removed) await photoStore.delete(p.id);
 }
 
 export async function getPrint(db: DB, id: string) {
@@ -455,6 +465,7 @@ export async function getPrint(db: DB, id: string) {
     .select({
       id: printSpools.id,
       spoolId: printSpools.spoolId,
+      partId: printSpools.partId,
       modelG: printSpools.modelG,
       purgeG: printSpools.purgeG,
       extraG: printSpools.extraG,
@@ -474,13 +485,17 @@ export async function getPrint(db: DB, id: string) {
     .from(photos)
     .where(and(eq(photos.printId, id), isNull(photos.deletedAt)))
     .orderBy(photos.createdAt);
-  return { ...p, lines, photos: pics };
+  const parts = await db
+    .select()
+    .from(printParts)
+    .where(and(eq(printParts.printId, id), isNull(printParts.deletedAt)))
+    .orderBy(printParts.sortOrder);
+  return { ...p, lines, parts, photos: pics };
 }
 export type PrintDetail = NonNullable<Awaited<ReturnType<typeof getPrint>>>;
 
 export interface PrintFilters {
   search?: string;
-  modelId?: string;
   spoolId?: string;
   material?: string;
   status?: "success" | "failed" | "";
@@ -494,8 +509,8 @@ export interface PrintFilters {
 export interface PrintListItem {
   id: string;
   modelName: string;
-  modelId: string | null;
-  partName: string;
+  /** Names of the parts, in order (empty for single-part prints). */
+  partNames: string[];
   printedAt: string;
   status: string;
   printMinutes: number;
@@ -512,7 +527,6 @@ export async function listPrints(db: DB, f: PrintFilters = {}): Promise<PrintLis
   const conds = [sql`p.deleted_at IS NULL`];
   if (f.search?.trim()) conds.push(sql`p.model_name ILIKE ${"%" + f.search.trim() + "%"}`);
   if (f.status) conds.push(sql`p.status = ${f.status}`);
-  if (f.modelId) conds.push(sql`p.model_id = ${f.modelId}`);
   if (f.from) conds.push(sql`p.printed_at >= ${f.from}`);
   if (f.to) conds.push(sql`p.printed_at < ${f.to}`);
   if (f.spoolId || f.material) {
@@ -524,13 +538,15 @@ export async function listPrints(db: DB, f: PrintFilters = {}): Promise<PrintLis
     );
   }
   const res = await db.execute(sql`
-    SELECT p.id, p.model_name, p.model_id, p.part_name, p.printed_at, p.status, p.print_minutes, p.total_cost, p.selling_price, p.profit,
+    SELECT p.id, p.model_name, p.printed_at, p.status, p.print_minutes, p.total_cost, p.selling_price, p.profit,
       (SELECT coalesce(sum(ps.total_g), 0) FROM print_spools ps WHERE ps.print_id = p.id AND ps.deleted_at IS NULL) AS total_g,
       (SELECT ph.id FROM photos ph WHERE ph.print_id = p.id AND ph.deleted_at IS NULL ORDER BY ph.created_at LIMIT 1) AS thumb_id,
       (SELECT string_agg(s.spool_code, ', ' ORDER BY ps.created_at) FROM print_spools ps JOIN spools s ON s.id = ps.spool_id
         WHERE ps.print_id = p.id AND ps.deleted_at IS NULL) AS spool_labels,
       (SELECT array_agg(s.colour_hex ORDER BY ps.created_at) FROM print_spools ps JOIN spools s ON s.id = ps.spool_id
-        WHERE ps.print_id = p.id AND ps.deleted_at IS NULL) AS colours
+        WHERE ps.print_id = p.id AND ps.deleted_at IS NULL) AS colours,
+      (SELECT array_agg(pp.name ORDER BY pp.sort_order) FROM print_parts pp
+        WHERE pp.print_id = p.id AND pp.deleted_at IS NULL) AS part_names
     FROM prints p
     WHERE ${sql.join(conds, sql` AND `)}
     ORDER BY p.printed_at DESC, p.created_at DESC
@@ -538,8 +554,7 @@ export async function listPrints(db: DB, f: PrintFilters = {}): Promise<PrintLis
   return (res.rows as Record<string, unknown>[]).map((r) => ({
     id: r.id as string,
     modelName: r.model_name as string,
-    modelId: (r.model_id as string | null) ?? null,
-    partName: (r.part_name as string) ?? "",
+    partNames: (r.part_names as string[] | null) ?? [],
     printedAt: tsToIso(r.printed_at)!,
     status: r.status as string,
     printMinutes: Number(r.print_minutes),
@@ -592,70 +607,84 @@ export async function getDashboard(db: DB, at = new Date()) {
 }
 export type Dashboard = Awaited<ReturnType<typeof getDashboard>>;
 
-// ---------- Multi-part models ----------
+// ---------- Recently deleted ----------
 
-export interface ModelSummary {
+/** Deleted prints stay restorable for this many days, then are removed for good. */
+export const RECENTLY_DELETED_DAYS = 30;
+
+export interface DeletedPrint {
   id: string;
-  name: string;
-  parts: number;
-  lastPrintedAt: string | null;
+  modelName: string;
+  printedAt: string;
+  deletedAt: string;
+  totalG: number;
+  partCount: number;
 }
 
-export async function listModels(db: DB): Promise<ModelSummary[]> {
+export async function listDeletedPrints(db: DB): Promise<DeletedPrint[]> {
   const res = await db.execute(sql`
-    SELECT m.id, m.name, count(p.id) AS parts, max(p.printed_at) AS last
-    FROM models m LEFT JOIN prints p ON p.model_id = m.id AND p.deleted_at IS NULL
-    WHERE m.deleted_at IS NULL
-    GROUP BY m.id ORDER BY max(coalesce(p.printed_at, m.created_at)) DESC`);
+    SELECT p.id, p.model_name, p.printed_at, p.deleted_at,
+      (SELECT coalesce(sum(ps.total_g), 0) FROM print_spools ps WHERE ps.print_id = p.id AND ps.deleted_at = p.deleted_at) AS total_g,
+      (SELECT count(*) FROM print_parts pp WHERE pp.print_id = p.id AND pp.deleted_at = p.deleted_at) AS parts
+    FROM prints p
+    WHERE p.deleted_at IS NOT NULL
+    ORDER BY p.deleted_at DESC`);
   return (res.rows as Record<string, unknown>[]).map((r) => ({
     id: r.id as string,
-    name: r.name as string,
-    parts: Number(r.parts),
-    lastPrintedAt: tsToIso(r.last),
+    modelName: r.model_name as string,
+    printedAt: tsToIso(r.printed_at)!,
+    deletedAt: tsToIso(r.deleted_at)!,
+    totalG: Number(r.total_g),
+    partCount: Number(r.parts),
   }));
 }
 
-/** A model with all its parts and the combined totals. */
-export async function getModel(db: DB, id: string) {
-  if (!isUuid(id)) return null;
-  const m = (
-    await db
-      .select()
-      .from(models)
-      .where(and(eq(models.id, id), isNull(models.deletedAt)))
-  )[0];
-  if (!m) return null;
-  const parts = (await listPrints(db, { modelId: id })).reverse(); // oldest part first
-  const sum = (k: "totalG" | "printMinutes" | "totalCost" | "sellingPrice" | "profit") =>
-    round2(parts.reduce((s, p) => s + p[k], 0));
-  return {
-    ...m,
-    parts,
-    totals: {
-      grams: sum("totalG"),
-      minutes: sum("printMinutes"),
-      cost: sum("totalCost"),
-      price: sum("sellingPrice"),
-      profit: sum("profit"),
-      failed: parts.filter((p) => p.status === "failed").length,
-    },
-  };
-}
-export type ModelDetail = NonNullable<Awaited<ReturnType<typeof getModel>>>;
-
-export async function renameModel(db: DB, id: string, name: string): Promise<void> {
-  const n = name.trim();
-  if (!n) throw new UserError("Model name is required");
+/** Brings a deleted print back with exactly the parts, lines and photos that were deleted with it. */
+export async function restorePrint(db: DB, id: string): Promise<void> {
+  if (!isUuid(id)) return;
   await db.transaction(async (tx) => {
-    await tx.update(models).set({ name: n, updatedAt: now() }).where(eq(models.id, id));
-    await tx.update(prints).set({ modelName: n, updatedAt: now() }).where(eq(prints.modelId, id));
+    const p = (await tx.select().from(prints).where(eq(prints.id, id)))[0];
+    if (!p?.deletedAt) throw new UserError("This print isn't in Recently deleted");
+    const ts = p.deletedAt;
+    const at = now();
+    await tx.update(prints).set({ deletedAt: null, updatedAt: at }).where(eq(prints.id, id));
+    await tx
+      .update(printSpools)
+      .set({ deletedAt: null, updatedAt: at })
+      .where(and(eq(printSpools.printId, id), eq(printSpools.deletedAt, ts)));
+    await tx
+      .update(printParts)
+      .set({ deletedAt: null, updatedAt: at })
+      .where(and(eq(printParts.printId, id), eq(printParts.deletedAt, ts)));
+    await tx
+      .update(photos)
+      .set({ deletedAt: null, updatedAt: at })
+      .where(and(eq(photos.printId, id), eq(photos.deletedAt, ts)));
   });
 }
 
-/** Only a model with no parts left can be deleted. */
-export async function deleteModel(db: DB, id: string): Promise<void> {
-  const m = await getModel(db, id);
-  if (!m) return;
-  if (m.parts.length) throw new UserError("Delete its parts first.");
-  await db.update(models).set({ deletedAt: now(), updatedAt: now() }).where(eq(models.id, id));
+/** Removes a deleted print and everything attached to it permanently, including photo files. */
+export async function purgePrint(db: DB, id: string, photoStore?: PhotoStore): Promise<void> {
+  if (!isUuid(id)) return;
+  const photoIds = await db.transaction(async (tx) => {
+    const p = (await tx.select().from(prints).where(eq(prints.id, id)))[0];
+    if (!p?.deletedAt) throw new UserError("Only deleted prints can be removed permanently");
+    const ph = await tx.delete(photos).where(eq(photos.printId, id)).returning({ id: photos.id });
+    await tx.delete(printSpools).where(eq(printSpools.printId, id));
+    await tx.delete(printParts).where(eq(printParts.printId, id));
+    await tx.delete(prints).where(eq(prints.id, id));
+    return ph.map((x) => x.id);
+  });
+  if (photoStore) for (const pid of photoIds) await photoStore.delete(pid).catch(() => {});
+}
+
+/** Permanently removes prints deleted more than RECENTLY_DELETED_DAYS ago. Returns how many. */
+export async function purgeExpiredDeleted(db: DB, photoStore?: PhotoStore, at = new Date()): Promise<number> {
+  const cutoff = new Date(at.getTime() - RECENTLY_DELETED_DAYS * 86_400_000).toISOString();
+  const res = await db.execute(
+    sql`SELECT id FROM prints WHERE deleted_at IS NOT NULL AND deleted_at < ${cutoff}`,
+  );
+  const ids = (res.rows as { id: string }[]).map((r) => r.id);
+  for (const id of ids) await purgePrint(db, id, photoStore);
+  return ids.length;
 }

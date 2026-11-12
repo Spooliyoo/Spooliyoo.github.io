@@ -4,6 +4,7 @@ import { createDb, runMigrations, type DB } from "@/lib/db/client";
 import { MemoryPhotoStore } from "@/lib/db/photo-store";
 import * as repo from "@/lib/db/repo";
 import { exportBackup, exportPrintsCsv, importBackup, parseBackup } from "@/lib/db/backup";
+import { LEGACY_MODEL_CONVERSION } from "@/lib/db/legacy";
 import type { SpoolInput, PrintInput } from "@/lib/validation";
 
 const spool = (over: Partial<SpoolInput> = {}): SpoolInput => ({
@@ -53,7 +54,7 @@ beforeEach(async () => {
     pg = await PGlite.create();
     db = await createDb(pg);
   }
-  await pg.exec("TRUNCATE photos, print_spools, spool_adjustments, prints, spools, models");
+  await pg.exec("TRUNCATE photos, print_spools, print_parts, spool_adjustments, prints, spools, models");
   store = new MemoryPhotoStore();
 });
 
@@ -132,7 +133,7 @@ describe("prints", () => {
     const id = await repo.savePrint(db, print(a));
     await repo.savePrint(db, print(a, { lines: [{ spoolId: a, modelG: 300, purgeG: 0, extraG: 0 }] }), id);
     expect((await repo.getSpool(db, a))!.remainingG).toBe(700);
-    await repo.deletePrint(db, id, store);
+    await repo.deletePrint(db, id);
     expect((await repo.getSpool(db, a))!.remainingG).toBe(1000);
     expect(await repo.getPrint(db, id)).toBeNull();
   });
@@ -171,7 +172,7 @@ describe("prints", () => {
     expect((await repo.listPrints(db, { spoolId: a })).length).toBe(1);
   });
 
-  it("stores photos and removes them on delete", async () => {
+  it("keeps photos while a print is in Recently deleted, removes them when deleted forever", async () => {
     const a = await repo.createSpool(db, spool());
     const blob = new Blob([new Uint8Array([1, 2, 3])], { type: "image/webp" });
     const id = await repo.savePrint(db, print(a), null, {
@@ -182,7 +183,9 @@ describe("prints", () => {
     expect(p.photos).toHaveLength(1);
     expect(await store.keys()).toEqual([p.photos[0]!.id]);
     expect((await repo.listPrints(db))[0]!.thumbId).toBe(p.photos[0]!.id);
-    await repo.deletePrint(db, id, store);
+    await repo.deletePrint(db, id);
+    expect(await store.keys()).toHaveLength(1);
+    await repo.purgePrint(db, id, store);
     expect(await store.keys()).toEqual([]);
   });
 });
@@ -214,7 +217,7 @@ describe("backup", () => {
     const backup = await exportBackup(db, store);
     const text = JSON.stringify(backup);
 
-    await pg.exec("TRUNCATE photos, print_spools, spool_adjustments, prints, spools, models");
+    await pg.exec("TRUNCATE photos, print_spools, print_parts, spool_adjustments, prints, spools, models");
     await store.clear();
 
     const preview = parseBackup(text);
@@ -240,7 +243,7 @@ describe("backup", () => {
     await repo.savePrint(db, print(a, { modelName: 'Box, "large"' }));
     await repo.savePrint(db, print(a, { modelName: "=HYPERLINK(1)" }));
     const csv = await exportPrintsCsv(db);
-    expect(csv.split("\r\n")[0]).toMatch(/^Date,Model,Part,Status/);
+    expect(csv.split("\r\n")[0]).toMatch(/^Date,Model,Parts,Status/);
     expect(csv).toContain('"Box, ""large"""');
     expect(csv).toContain("'=HYPERLINK(1)");
   });
@@ -268,52 +271,191 @@ describe("backup reminder", () => {
   });
 });
 
-describe("multi-part models", () => {
-  it("groups parts under one model with combined totals", async () => {
+describe("parts inside one print", () => {
+  it("logs several parts in one print with their own times and spools", async () => {
     const a = await repo.createSpool(db, spool());
-    const first = await repo.savePrint(
+    const b = await repo.createSpool(db, spool({ spoolCode: "PETG-1", price: 2000 }));
+    const id = await repo.savePrint(
       db,
-      print(a, { modelName: "Dragon", multiPart: true, partName: "Head", printMinutes: 60 }),
+      print(a, {
+        modelName: "Dragon",
+        printMinutes: 1, // ignored: parts' times are added up
+        parts: [
+          { name: "Head", printMinutes: 60 },
+          { name: "Body", printMinutes: 90 },
+        ],
+        lines: [
+          { spoolId: a, modelG: 50, purgeG: 5, extraG: 0, partIndex: 0 },
+          { spoolId: a, modelG: 100, purgeG: 0, extraG: 0, partIndex: 1 },
+          { spoolId: b, modelG: 20, purgeG: 0, extraG: 0, partIndex: 1 },
+        ],
+      }),
     );
-    const p1 = (await repo.getPrint(db, first))!;
-    expect(p1.modelId).toBeTruthy();
-    expect(p1.partName).toBe("Head");
+    const p = (await repo.getPrint(db, id))!;
+    expect(p.printMinutes).toBe(150);
+    expect(p.parts.map((x) => x.name)).toEqual(["Head", "Body"]);
+    const [head, body] = p.parts;
+    expect(p.lines.filter((l) => l.partId === head!.id)).toHaveLength(1);
+    expect(p.lines.filter((l) => l.partId === body!.id)).toHaveLength(2);
+    expect((await repo.getSpool(db, a))!.remainingG).toBe(845); // same spool used by both parts
+    expect(p.filamentCost).toBe(226); // 155 g × 1.2 + 20 g × 2
+    const [row] = await repo.listPrints(db);
+    expect(row!.partNames).toEqual(["Head", "Body"]);
 
+    // Editing replaces the parts
     await repo.savePrint(
       db,
-      print(a, { modelName: "ignored", modelId: p1.modelId, partName: "Body", printMinutes: 90 }),
+      print(a, {
+        modelName: "Dragon",
+        parts: [{ name: "Whole", printMinutes: 30 }],
+        lines: [{ spoolId: a, modelG: 10, purgeG: 0, extraG: 0, partIndex: 0 }],
+      }),
+      id,
     );
-    const m = (await repo.getModel(db, p1.modelId!))!;
-    expect(m.name).toBe("Dragon");
-    expect(m.parts.map((p) => p.partName)).toEqual(["Head", "Body"]);
-    expect(m.parts[1]!.modelName).toBe("Dragon");
-    expect(m.totals.grams).toBe(210);
-    expect(m.totals.minutes).toBe(150);
-    expect((await repo.listModels(db))[0]).toMatchObject({ name: "Dragon", parts: 2 });
-
-    await repo.renameModel(db, m.id, "Fire dragon");
-    expect((await repo.getPrint(db, first))!.modelName).toBe("Fire dragon");
-    await expect(repo.deleteModel(db, m.id)).rejects.toThrow(/parts/);
+    const edited = (await repo.getPrint(db, id))!;
+    expect(edited.parts.map((x) => x.name)).toEqual(["Whole"]);
+    expect(edited.printMinutes).toBe(30);
   });
 
-  it("requires a part name", async () => {
+  it("rejects parts without a name or without spools", async () => {
     const a = await repo.createSpool(db, spool());
-    await expect(repo.savePrint(db, print(a, { multiPart: true, partName: "" }))).rejects.toThrow();
+    await expect(
+      repo.savePrint(
+        db,
+        print(a, {
+          parts: [{ name: "", printMinutes: 10 }],
+          lines: [{ spoolId: a, modelG: 1, purgeG: 0, extraG: 0, partIndex: 0 }],
+        }),
+      ),
+    ).rejects.toThrow();
+    await expect(
+      repo.savePrint(
+        db,
+        print(a, {
+          parts: [
+            { name: "A", printMinutes: 10 },
+            { name: "B", printMinutes: 10 },
+          ],
+          lines: [{ spoolId: a, modelG: 1, purgeG: 0, extraG: 0, partIndex: 0 }],
+        }),
+      ),
+    ).rejects.toThrow();
   });
 
-  it("upgrades old (v1) backups without models", async () => {
+  it("converts old multi-print models into one print with parts", async () => {
+    const a = await repo.createSpool(db, spool());
+    const p1 = await repo.savePrint(
+      db,
+      print(a, { modelName: "Old", printMinutes: 60, printedAt: "2026-01-01T10:00:00Z" }),
+    );
+    const p2 = await repo.savePrint(
+      db,
+      print(a, {
+        modelName: "Old",
+        printMinutes: 30,
+        printedAt: "2026-01-02T10:00:00Z",
+        lines: [{ spoolId: a, modelG: 40, purgeG: 0, extraG: 0 }],
+      }),
+    );
+    // Recreate the legacy shape: a models row with both prints linked to it as parts.
+    await pg.exec(
+      `INSERT INTO models (id, name) VALUES ('11111111-1111-4111-8111-111111111111', 'Old model')`,
+    );
+    await pg.exec(
+      `UPDATE prints SET model_id = '11111111-1111-4111-8111-111111111111', part_name = CASE WHEN id = '${p1}' THEN 'Head' ELSE 'Body' END`,
+    );
+    await pg.transaction(async (tx) => {
+      for (const stmt of LEGACY_MODEL_CONVERSION) await tx.exec(stmt);
+    });
+    const list = await repo.listPrints(db);
+    expect(list).toHaveLength(1);
+    expect(list[0]!.id).toBe(p1);
+    expect(list[0]!.modelName).toBe("Old model");
+    expect(list[0]!.partNames).toEqual(["Head", "Body"]);
+    expect(list[0]!.printMinutes).toBe(90);
+    expect(list[0]!.totalG).toBe(145);
+    expect(await repo.getPrint(db, p2)).toBeNull();
+    expect((await repo.getSpool(db, a))!.remainingG).toBe(855);
+    expect(await repo.listDeletedPrints(db)).toEqual([]); // merged prints don't show up as deleted
+  });
+});
+
+describe("recently deleted", () => {
+  it("restores exactly what was deleted", async () => {
+    const a = await repo.createSpool(db, spool());
+    const id = await repo.savePrint(
+      db,
+      print(a, {
+        parts: [{ name: "A", printMinutes: 20 }],
+        lines: [{ spoolId: a, modelG: 100, purgeG: 0, extraG: 0, partIndex: 0 }],
+      }),
+    );
+    // An earlier edit leaves an old, already-deleted line that must NOT come back.
+    await repo.savePrint(
+      db,
+      print(a, {
+        parts: [{ name: "A", printMinutes: 20 }],
+        lines: [{ spoolId: a, modelG: 50, purgeG: 0, extraG: 0, partIndex: 0 }],
+      }),
+      id,
+    );
+    await new Promise((r) => setTimeout(r, 5));
+    await repo.deletePrint(db, id);
+    expect((await repo.getSpool(db, a))!.remainingG).toBe(1000);
+    const [d] = await repo.listDeletedPrints(db);
+    expect(d).toMatchObject({ id, totalG: 50, partCount: 1 });
+
+    await repo.restorePrint(db, id);
+    const p = (await repo.getPrint(db, id))!;
+    expect(p.lines).toHaveLength(1);
+    expect(p.parts).toHaveLength(1);
+    expect((await repo.getSpool(db, a))!.remainingG).toBe(950);
+    expect(await repo.listDeletedPrints(db)).toEqual([]);
+  });
+
+  it("purges prints deleted more than 30 days ago", async () => {
+    const a = await repo.createSpool(db, spool());
+    const oldId = await repo.savePrint(db, print(a));
+    const newId = await repo.savePrint(db, print(a));
+    await repo.deletePrint(db, oldId);
+    await repo.deletePrint(db, newId);
+    await pg.exec(`UPDATE prints SET deleted_at = now() - interval '31 days' WHERE id = '${oldId}'`);
+    expect(await repo.purgeExpiredDeleted(db, store)).toBe(1);
+    expect((await repo.listDeletedPrints(db)).map((d) => d.id)).toEqual([newId]);
+  });
+});
+
+describe("backup upgrades", () => {
+  it("upgrades old (v1) backups", async () => {
     const a = await repo.createSpool(db, spool());
     await repo.savePrint(db, print(a));
     const b = await exportBackup(db, store);
     const v1 = JSON.parse(JSON.stringify(b));
     v1.schemaVersion = 1;
     delete v1.data.models;
+    delete v1.data.printParts;
     for (const p of v1.data.prints) {
       delete p.modelId;
       delete p.partName;
     }
+    for (const l of v1.data.printSpools) delete l.partId;
     const preview = parseBackup(JSON.stringify(v1));
-    expect(preview.backup.data.models).toEqual([]);
+    expect(preview.backup.data.printParts).toEqual([]);
     expect(preview.counts.prints).toBe(1);
+  });
+
+  it("round-trips prints with parts", async () => {
+    const a = await repo.createSpool(db, spool());
+    await repo.savePrint(
+      db,
+      print(a, {
+        parts: [{ name: "Lid", printMinutes: 15 }],
+        lines: [{ spoolId: a, modelG: 10, purgeG: 0, extraG: 0, partIndex: 0 }],
+      }),
+    );
+    const text = JSON.stringify(await exportBackup(db, store));
+    await pg.exec("TRUNCATE photos, print_spools, print_parts, spool_adjustments, prints, spools, models");
+    await importBackup(db, store, parseBackup(text).backup);
+    expect((await repo.listPrints(db))[0]!.partNames).toEqual(["Lid"]);
   });
 });

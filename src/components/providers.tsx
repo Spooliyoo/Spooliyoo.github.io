@@ -3,7 +3,7 @@
 import * as React from "react";
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getDatabase, OtherTabError, type AppDatabase } from "@/lib/db/browser";
-import { getSettings } from "@/lib/db/repo";
+import { getSettings, purgeExpiredDeleted } from "@/lib/db/repo";
 import type { Settings } from "@/lib/db/schema";
 import { formatMoney } from "@/lib/calc";
 import { Alert, Button, Spinner } from "./ui";
@@ -122,7 +122,7 @@ function ToastHost({ children }: { children: React.ReactNode }) {
       {children}
       <div
         aria-live="polite"
-        className="pointer-events-none fixed inset-x-0 bottom-24 z-50 flex flex-col items-center gap-2 px-4 md:bottom-6"
+        className="pointer-events-none fixed inset-x-0 bottom-[calc(10rem+env(safe-area-inset-bottom))] z-50 flex flex-col items-center gap-2 px-4 md:bottom-24"
       >
         {toasts.map((t) => (
           <div
@@ -201,7 +201,11 @@ export function Providers({ children }: { children: React.ReactNode }) {
   React.useEffect(() => {
     let alive = true;
     getDatabase().then(
-      (a) => alive && setApp(a),
+      (a) => {
+        // Remove prints that have been in Recently deleted for longer than the keep period.
+        purgeExpiredDeleted(a.db, a.photos).catch(() => {});
+        if (alive) setApp(a);
+      },
       (e) => alive && setError(e),
     );
     return () => {

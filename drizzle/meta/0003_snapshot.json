@@ -1,0 +1,1000 @@
+{
+  "id": "00922472-e312-458d-8487-5a1cfdc70972",
+  "prevId": "a676cb01-cf77-4fdd-9fdb-42eeef35ca29",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.models": {
+      "name": "models",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "notes": {
+          "name": "notes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.photos": {
+      "name": "photos",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "print_id": {
+          "name": "print_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "mime_type": {
+          "name": "mime_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "width": {
+          "name": "width",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "height": {
+          "name": "height",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "size_bytes": {
+          "name": "size_bytes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "photos_print_idx": {
+          "name": "photos_print_idx",
+          "columns": [
+            {
+              "expression": "print_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "photos_print_id_prints_id_fk": {
+          "name": "photos_print_id_prints_id_fk",
+          "tableFrom": "photos",
+          "tableTo": "prints",
+          "columnsFrom": [
+            "print_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.print_parts": {
+      "name": "print_parts",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "print_id": {
+          "name": "print_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "print_minutes": {
+          "name": "print_minutes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sort_order": {
+          "name": "sort_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "print_parts_print_idx": {
+          "name": "print_parts_print_idx",
+          "columns": [
+            {
+              "expression": "print_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "print_parts_print_id_prints_id_fk": {
+          "name": "print_parts_print_id_prints_id_fk",
+          "tableFrom": "print_parts",
+          "tableTo": "prints",
+          "columnsFrom": [
+            "print_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.print_spools": {
+      "name": "print_spools",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "print_id": {
+          "name": "print_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "spool_id": {
+          "name": "spool_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "part_id": {
+          "name": "part_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "model_g": {
+          "name": "model_g",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "purge_g": {
+          "name": "purge_g",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "extra_g": {
+          "name": "extra_g",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "total_g": {
+          "name": "total_g",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cost_per_g_snapshot": {
+          "name": "cost_per_g_snapshot",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "print_spools_spool_idx": {
+          "name": "print_spools_spool_idx",
+          "columns": [
+            {
+              "expression": "spool_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "print_spools_print_idx": {
+          "name": "print_spools_print_idx",
+          "columns": [
+            {
+              "expression": "print_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "print_spools_print_id_prints_id_fk": {
+          "name": "print_spools_print_id_prints_id_fk",
+          "tableFrom": "print_spools",
+          "tableTo": "prints",
+          "columnsFrom": [
+            "print_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "print_spools_spool_id_spools_id_fk": {
+          "name": "print_spools_spool_id_spools_id_fk",
+          "tableFrom": "print_spools",
+          "tableTo": "spools",
+          "columnsFrom": [
+            "spool_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "print_spools_part_id_print_parts_id_fk": {
+          "name": "print_spools_part_id_print_parts_id_fk",
+          "tableFrom": "print_spools",
+          "tableTo": "print_parts",
+          "columnsFrom": [
+            "part_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "print_spools_nonneg": {
+          "name": "print_spools_nonneg",
+          "value": "\"print_spools\".\"model_g\" >= 0 AND \"print_spools\".\"purge_g\" >= 0 AND \"print_spools\".\"extra_g\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.prints": {
+      "name": "prints",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "model_name": {
+          "name": "model_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "model_id": {
+          "name": "model_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "part_name": {
+          "name": "part_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "printed_at": {
+          "name": "printed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "print_minutes": {
+          "name": "print_minutes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'success'"
+        },
+        "labour_minutes": {
+          "name": "labour_minutes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "electricity_rate": {
+          "name": "electricity_rate",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "printer_watts": {
+          "name": "printer_watts",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "wear_rate": {
+          "name": "wear_rate",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "labour_rate": {
+          "name": "labour_rate",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "buffer_pct": {
+          "name": "buffer_pct",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "markup_pct": {
+          "name": "markup_pct",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "filament_cost": {
+          "name": "filament_cost",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "electricity_cost": {
+          "name": "electricity_cost",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "wear_cost": {
+          "name": "wear_cost",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "labour_cost": {
+          "name": "labour_cost",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "buffer_cost": {
+          "name": "buffer_cost",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "total_cost": {
+          "name": "total_cost",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "selling_price": {
+          "name": "selling_price",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "price_overridden": {
+          "name": "price_overridden",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "profit": {
+          "name": "profit",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "notes": {
+          "name": "notes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "prints_printed_at_idx": {
+          "name": "prints_printed_at_idx",
+          "columns": [
+            {
+              "expression": "printed_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "prints_model_id_models_id_fk": {
+          "name": "prints_model_id_models_id_fk",
+          "tableFrom": "prints",
+          "tableTo": "models",
+          "columnsFrom": [
+            "model_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "prints_minutes_pos": {
+          "name": "prints_minutes_pos",
+          "value": "\"prints\".\"print_minutes\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.settings": {
+      "name": "settings",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "default": 1
+        },
+        "currency": {
+          "name": "currency",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'INR'"
+        },
+        "default_purge_g": {
+          "name": "default_purge_g",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 5
+        },
+        "electricity_rate": {
+          "name": "electricity_rate",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 8
+        },
+        "printer_watts": {
+          "name": "printer_watts",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 150
+        },
+        "wear_rate": {
+          "name": "wear_rate",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 5
+        },
+        "labour_rate": {
+          "name": "labour_rate",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 200
+        },
+        "buffer_pct": {
+          "name": "buffer_pct",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 10
+        },
+        "markup_pct": {
+          "name": "markup_pct",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 50
+        },
+        "low_stock_g": {
+          "name": "low_stock_g",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 100
+        },
+        "theme": {
+          "name": "theme",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'light'"
+        },
+        "last_backup_at": {
+          "name": "last_backup_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.spool_adjustments": {
+      "name": "spool_adjustments",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "spool_id": {
+          "name": "spool_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "measured_gross_g": {
+          "name": "measured_gross_g",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "remaining_before_g": {
+          "name": "remaining_before_g",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "remaining_after_g": {
+          "name": "remaining_after_g",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "delta_g": {
+          "name": "delta_g",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "adjusted_at": {
+          "name": "adjusted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "spool_adjustments_spool_idx": {
+          "name": "spool_adjustments_spool_idx",
+          "columns": [
+            {
+              "expression": "spool_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "spool_adjustments_spool_id_spools_id_fk": {
+          "name": "spool_adjustments_spool_id_spools_id_fk",
+          "tableFrom": "spool_adjustments",
+          "tableTo": "spools",
+          "columnsFrom": [
+            "spool_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.spools": {
+      "name": "spools",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "spool_code": {
+          "name": "spool_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "brand": {
+          "name": "brand",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "material": {
+          "name": "material",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'PLA'"
+        },
+        "colour_name": {
+          "name": "colour_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "colour_hex": {
+          "name": "colour_hex",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'#888888'"
+        },
+        "diameter_mm": {
+          "name": "diameter_mm",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1.75
+        },
+        "price": {
+          "name": "price",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "net_weight_g": {
+          "name": "net_weight_g",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1000
+        },
+        "tare_weight_g": {
+          "name": "tare_weight_g",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "purchase_date": {
+          "name": "purchase_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'active'"
+        },
+        "notes": {
+          "name": "notes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "spools_weights_nonneg": {
+          "name": "spools_weights_nonneg",
+          "value": "\"spools\".\"price\" >= 0 AND \"spools\".\"net_weight_g\" >= 0 AND \"spools\".\"tare_weight_g\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

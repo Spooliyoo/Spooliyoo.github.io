@@ -67,7 +67,7 @@ export function BackupNudge() {
         <button
           onClick={backup}
           disabled={busy}
-          className="bg-primary text-primary-foreground fixed right-4 bottom-24 z-30 flex items-center gap-2 rounded-full px-4 py-2.5 text-sm font-medium shadow-lg hover:opacity-90 disabled:opacity-60 md:bottom-6"
+          className="bg-primary text-primary-foreground fixed right-4 bottom-[calc(6.5rem+env(safe-area-inset-bottom))] z-30 flex items-center gap-2 rounded-full px-4 py-2.5 text-sm font-medium shadow-lg hover:opacity-90 disabled:opacity-60 md:right-8 md:bottom-10"
           aria-label={`Back up now — ${changes} unsaved ${changes === 1 ? "change" : "changes"}`}
         >
           <CloudUpload className="size-4" />

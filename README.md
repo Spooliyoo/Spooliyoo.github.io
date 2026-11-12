@@ -1,3 +1,5 @@
+<p align="center"><img src="public/icons/icon.svg" width="96" height="96" alt="Spooliyoo logo"></p>
+
 # Spooliyoo
 
 Know how many grams are left on every 3D-printer spool, and what every print really costs.
@@ -12,7 +14,8 @@ Spooliyoo is a free, open-source **offline-first web app**. It installs on your 
 
 - **Spools**: give each spool any unique ID (box code, your own label, later an NFC/QR value). Track brand, material, colour, price, net weight and empty-spool weight.
 - **Remaining filament**: calculated from everything you log, never typed in by hand. Put a spool on a scale to correct it at any time.
-- **Print log**: model weight + purge waste + extra filament, deducted from one or more spools. Failed prints count as waste. Add reference photos.
+- **Print log**: model weight + purge waste + extra filament, deducted from one or more spools. Multi-part models are logged once, with each part's own time and spools. Failed prints count as waste. Add reference photos.
+- **Recently deleted**: deleted prints can be restored for 30 days.
 - **Price calculator**: filament, electricity, printer wear, labour, a failure buffer and markup, shown live as you type. Each print keeps its own rates, so changing a setting never rewrites past prices.
 - **Dashboard and history**: stock value, low-stock spools, this month's usage, cost, revenue and profit. Search and filter every print.
 - **Backups**: export everything (photos included) to one JSON file and restore it on any device; export prints to CSV.

@@ -63,8 +63,15 @@ test("weight correction, multi-spool print, edit, delete and backup restore", as
   await page.getByText("Two-tone vase").click();
   await page.getByRole("button", { name: "Delete print" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
-  await expect(page.getByRole("heading", { name: "History" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Prints" })).toBeVisible();
   await expect(page.getByText("No prints yet")).toBeVisible();
+
+  // Recently deleted: restore it
+  await page.goto("/history/");
+  await expect(page.getByText("Two-tone vase")).toBeVisible();
+  await page.getByRole("button", { name: "Restore" }).click();
+  await expect(page.getByText("Print restored")).toBeVisible();
+  await expect(page.getByText(/Nothing here/)).toBeVisible();
 
   await page.goto("/settings/");
   await page.getByLabel("Backup file").setInputFiles(backupPath);

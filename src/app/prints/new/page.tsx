@@ -8,20 +8,10 @@ import { PageHeader, Spinner } from "@/components/ui";
 function NewPrintPage() {
   const settings = useSettings();
   const spool = useSearchParam("spool");
-  const model = useSearchParam("model");
   return (
     <>
-      <PageHeader title={model ? "Add part" : "Log print"} back={<BackButton />} />
-      {settings ? (
-        <PrintForm
-          key={`${spool ?? ""}-${model ?? ""}`}
-          settings={settings}
-          presetSpoolId={spool}
-          presetModelId={model}
-        />
-      ) : (
-        <Spinner />
-      )}
+      <PageHeader title="Log print" back={<BackButton />} />
+      {settings ? <PrintForm key={spool ?? ""} settings={settings} presetSpoolId={spool} /> : <Spinner />}
     </>
   );
 }

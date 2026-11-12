@@ -6,19 +6,12 @@ import { AlertTriangle, Camera, ImagePlus, Plus, Save, Trash2, X, ChevronDown } 
 import { useApp, useMoney, useToast, useWrite } from "./providers";
 import { Alert, Button, Card, CardHeader, Field, Input, Select, Swatch, Textarea } from "./ui";
 import { PhotoImg } from "./shared";
-import {
-  listModels,
-  listSpools,
-  savePrint,
-  type ModelSummary,
-  type NewPhoto,
-  type PrintDetail,
-  type SpoolWithStats,
-} from "@/lib/db/repo";
+import { listSpools, savePrint, type NewPhoto, type PrintDetail, type SpoolWithStats } from "@/lib/db/repo";
 import type { Settings } from "@/lib/db/schema";
 import {
   calculatePrice,
   durationFromParts,
+  formatDuration,
   formatGrams,
   lineTotalG,
   parseTimestamp,
@@ -30,11 +23,22 @@ import { cn, errorMessage, num, toLocalInput } from "@/lib/utils";
 
 interface LineState {
   key: string;
+  /** Which part this spool belongs to (null for single-part prints). */
+  partKey: string | null;
   spoolId: string;
   modelG: string;
   purgeG: string;
   extraG: string;
 }
+
+interface PartState {
+  key: string;
+  name: string;
+  hours: string;
+  mins: string;
+}
+
+const TIME_ERROR = "Enter hours and/or minutes (minutes 0–59)";
 
 interface Preview extends NewPhoto {
   key: string;
@@ -56,12 +60,10 @@ export function PrintForm({
   settings,
   existing,
   presetSpoolId,
-  presetModelId,
 }: {
   settings: Settings;
   existing?: PrintDetail;
   presetSpoolId?: string | null;
-  presetModelId?: string | null;
 }) {
   const router = useRouter();
   const { db, photos: photoStore } = useApp();
@@ -77,20 +79,30 @@ export function PrintForm({
   // Separate hour and minute boxes: iPhone number keypads have no ":" key.
   const [hours, setHours] = React.useState(existing ? String(Math.floor(existing.printMinutes / 60)) : "");
   const [mins, setMins] = React.useState(existing ? String(existing.printMinutes % 60) : "");
-  // Multi-part models
-  const [models, setModels] = React.useState<ModelSummary[]>([]);
-  const [modelChoice, setModelChoice] = React.useState<string>(existing?.modelId ?? presetModelId ?? "");
-  const [multiPart, setMultiPart] = React.useState(false);
-  const [partName, setPartName] = React.useState(existing?.partName ?? "");
+  // Parts: empty = single-part print. Each part has its own name, time and spools.
+  const [initialParts] = React.useState(() =>
+    (existing?.parts ?? []).map((p) => ({
+      id: p.id,
+      key: newKey(),
+      name: p.name,
+      hours: String(Math.floor(p.printMinutes / 60)),
+      mins: String(p.printMinutes % 60),
+    })),
+  );
+  const [parts, setParts] = React.useState<PartState[]>(() =>
+    initialParts.map(({ key, name, hours, mins }) => ({ key, name, hours, mins })),
+  );
+  const multiPart = parts.length > 0;
   const [status, setStatus] = React.useState<"success" | "failed">(
     (existing?.status as "success" | "failed") ?? "success",
   );
   const [labour, setLabour] = React.useState(existing?.labourMinutes ? String(existing.labourMinutes) : "");
   const [notes, setNotes] = React.useState(existing?.notes ?? "");
-  const [lines, setLines] = React.useState<LineState[]>(
+  const [lines, setLines] = React.useState<LineState[]>(() =>
     existing
       ? existing.lines.map((l) => ({
           key: newKey(),
+          partKey: initialParts.find((p) => p.id === l.partId)?.key ?? null,
           spoolId: l.spoolId,
           modelG: String(l.modelG),
           purgeG: String(l.purgeG),
@@ -99,6 +111,7 @@ export function PrintForm({
       : [
           {
             key: newKey(),
+            partKey: null,
             spoolId: presetSpoolId ?? "",
             modelG: "",
             purgeG: String(settings.defaultPurgeG),
@@ -139,24 +152,27 @@ export function PrintForm({
     });
   }, [db, existing, presetSpoolId]);
 
-  React.useEffect(() => {
-    listModels(db).then(setModels);
-  }, [db]);
-
   React.useEffect(() => () => newPhotos.forEach((p) => URL.revokeObjectURL(p.url)), []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const spoolById = React.useMemo(() => new Map((spools ?? []).map((s) => [s.id, s])), [spools]);
   // Usage already counted from this print (when editing) is available again.
-  const previousUse = React.useMemo(
-    () => new Map((existing?.lines ?? []).map((l) => [l.spoolId, l.totalG])),
-    [existing],
-  );
+  const previousUse = React.useMemo(() => {
+    const m = new Map<string, number>();
+    for (const l of existing?.lines ?? []) m.set(l.spoolId, (m.get(l.spoolId) ?? 0) + l.totalG);
+    return m;
+  }, [existing]);
   const selectable = (spools ?? []).filter(
     (s) => s.status === "active" || lines.some((l) => l.spoolId === s.id),
   );
 
   const failed = status === "failed";
-  const minutes = durationFromParts(hours, mins);
+  const singleMinutes = durationFromParts(hours, mins);
+  const partMinutes = parts.map((p) => durationFromParts(p.hours, p.mins));
+  const totalMinutes = multiPart
+    ? partMinutes.reduce((s, m) => s + (Number.isFinite(m) ? m : 0), 0)
+    : Number.isFinite(singleMinutes)
+      ? singleMinutes
+      : 0;
   const rateNums = Object.fromEntries(
     rateFields.map((f) => [f.key, num(rates[f.key], 0)]),
   ) as unknown as Rates;
@@ -172,26 +188,67 @@ export function PrintForm({
       const old = existing?.lines.find((x) => x.spoolId === l.spoolId);
       return { ...l, costPerG: old?.costPerGSnapshot ?? (s ? s.costPerG : 0) };
     }),
-    printMinutes: Number.isFinite(minutes) ? minutes : 0,
+    printMinutes: totalMinutes,
     labourMinutes: num(labour, 0),
     rates: rateNums,
     failed,
     priceOverride: override.trim() === "" ? null : Number(override),
   });
 
-  // FR-WN-1: warn when a line needs more than the spool has.
-  const shortages = lineNums
-    .map((l) => {
-      const s = spoolById.get(l.spoolId);
+  // FR-WN-1: warn when a spool is asked for more than it has (adding up every part that uses it).
+  const needBySpool = new Map<string, number>();
+  for (const l of lineNums)
+    if (l.spoolId) needBySpool.set(l.spoolId, (needBySpool.get(l.spoolId) ?? 0) + lineTotalG(l));
+  const shortages = [...needBySpool.entries()]
+    .map(([id, need]) => {
+      const s = spoolById.get(id);
       if (!s) return null;
-      const available = s.remainingG + (previousUse.get(s.id) ?? 0);
-      const need = lineTotalG(l);
+      const available = s.remainingG + (previousUse.get(id) ?? 0);
       return need > available ? { spool: s, need, available } : null;
     })
     .filter((x): x is NonNullable<typeof x> => !!x);
 
   const updateLine = (key: string, patch: Partial<LineState>) =>
     setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)));
+  const updatePart = (key: string, patch: Partial<PartState>) =>
+    setParts((ps) => ps.map((p) => (p.key === key ? { ...p, ...patch } : p)));
+
+  function setMultiPart(on: boolean) {
+    if (on) {
+      // The current spools and time become Part 1.
+      const first: PartState = { key: newKey(), name: "", hours, mins };
+      setParts([first]);
+      setLines((ls) => ls.map((l) => ({ ...l, partKey: first.key })));
+    } else if (parts.length <= 1) {
+      if (parts[0]) {
+        setHours(parts[0].hours);
+        setMins(parts[0].mins);
+      }
+      setParts([]);
+      setLines((ls) => ls.map((l) => ({ ...l, partKey: null })));
+    }
+  }
+
+  function addPart() {
+    const p: PartState = { key: newKey(), name: "", hours: "", mins: "" };
+    setParts((ps) => [...ps, p]);
+    setLines((ls) => [
+      ...ls,
+      {
+        key: newKey(),
+        partKey: p.key,
+        spoolId: ls.at(-1)?.spoolId ?? "",
+        modelG: "",
+        purgeG: "0",
+        extraG: "",
+      },
+    ]);
+  }
+
+  function removePart(key: string) {
+    setParts((ps) => ps.filter((p) => p.key !== key));
+    setLines((ls) => ls.filter((l) => l.partKey !== key));
+  }
 
   async function addFiles(files: FileList | null) {
     if (!files?.length) return;
@@ -213,16 +270,22 @@ export function PrintForm({
     e.preventDefault();
     setFormError(null);
     const input: PrintInput = {
-      modelName: modelChoice ? (models.find((m) => m.id === modelChoice)?.name ?? modelName) : modelName,
-      modelId: modelChoice || null,
-      multiPart: !modelChoice && multiPart,
-      partName,
+      modelName,
       printedAt: printedAt ? new Date(printedAt).toISOString() : "",
-      printMinutes: Number.isFinite(minutes) ? minutes : NaN,
+      // For multi-part prints the server adds up the parts' times.
+      printMinutes: multiPart
+        ? Math.max(1, totalMinutes)
+        : Number.isFinite(singleMinutes)
+          ? singleMinutes
+          : NaN,
       status,
       labourMinutes: num(labour, 0),
       notes,
-      lines: lineNums,
+      parts: parts.map((p, i) => ({ name: p.name, printMinutes: partMinutes[i] ?? NaN })),
+      lines: lines.map((l, i) => ({
+        ...lineNums[i]!,
+        partIndex: l.partKey ? parts.findIndex((p) => p.key === l.partKey) : null,
+      })),
       rates: Object.fromEntries(rateFields.map((f) => [f.key, num(rates[f.key])])) as unknown as Rates,
       priceOverride: failed || override.trim() === "" ? null : num(override),
     };
@@ -233,11 +296,21 @@ export function PrintForm({
         const k = i.path.join(".");
         if (!errs[k]) errs[k] = i.message;
       }
-      if (errs.printMinutes || !Number.isFinite(minutes))
-        errs.printMinutes = "Enter hours and/or minutes (minutes 0–59)";
+      if (!multiPart && (errs.printMinutes || !Number.isFinite(singleMinutes)))
+        errs.printMinutes = TIME_ERROR;
+      partMinutes.forEach((m, i) => {
+        if (!Number.isFinite(m) || errs[`parts.${i}.printMinutes`])
+          errs[`parts.${i}.printMinutes`] = TIME_ERROR;
+      });
       setErrors(errs);
-      const first = Object.keys(errs)[0];
-      document.getElementById(first === "printMinutes" ? "printHours" : (first ?? ""))?.focus();
+      const first = Object.keys(errs)[0] ?? "";
+      const focusId =
+        first === "printMinutes"
+          ? "printHours"
+          : /^parts\.\d+\.printMinutes$/.test(first)
+            ? first.replace("printMinutes", "hours")
+            : first;
+      document.getElementById(focusId)?.focus();
       return;
     }
     setErrors({});
@@ -267,117 +340,156 @@ export function PrintForm({
 
   const cur = settings.currency;
 
+  /** One spool row. `i` is the line's position in the whole print (used for ids and errors). */
+  const renderLine = (
+    l: LineState,
+    i: number,
+    numberInGroup: number,
+    groupSize: number,
+    canRemove: boolean,
+  ) => {
+    const s = spoolById.get(l.spoolId);
+    const lineN = lineNums[i]!;
+    return (
+      <div key={l.key} className="flex flex-col gap-3 rounded-2xl border p-3">
+        <div className="flex items-end gap-2">
+          <Field
+            label={groupSize > 1 ? `Spool ${numberInGroup}` : "Spool"}
+            htmlFor={`lines.${i}.spoolId`}
+            error={errors[`lines.${i}.spoolId`]}
+            className="flex-1"
+          >
+            <div className="flex items-center gap-2">
+              {s && <Swatch hex={s.colourHex} className="size-6" />}
+              <Select
+                id={`lines.${i}.spoolId`}
+                value={l.spoolId}
+                onChange={(e) => updateLine(l.key, { spoolId: e.target.value })}
+                aria-invalid={!!errors[`lines.${i}.spoolId`]}
+              >
+                <option value="">Choose a spool…</option>
+                {selectable.map((sp) => (
+                  <option
+                    key={sp.id}
+                    value={sp.id}
+                    disabled={lines.some(
+                      (x) => x.key !== l.key && x.partKey === l.partKey && x.spoolId === sp.id,
+                    )}
+                  >
+                    {sp.spoolCode} — {sp.name} ({formatGrams(sp.remainingG + (previousUse.get(sp.id) ?? 0))}{" "}
+                    left)
+                  </option>
+                ))}
+              </Select>
+            </div>
+          </Field>
+          {canRemove && (
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={`Remove spool ${numberInGroup}`}
+              onClick={() => setLines((ls) => ls.filter((x) => x.key !== l.key))}
+            >
+              <Trash2 />
+            </Button>
+          )}
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          <Field
+            label={failed ? "Used (g)" : "Model (g)"}
+            htmlFor={`lines.${i}.modelG`}
+            error={errors[`lines.${i}.modelG`]}
+          >
+            <Input
+              id={`lines.${i}.modelG`}
+              type="number"
+              inputMode="decimal"
+              step="any"
+              min={0}
+              value={l.modelG}
+              onChange={(e) => updateLine(l.key, { modelG: e.target.value })}
+              aria-invalid={!!errors[`lines.${i}.modelG`]}
+            />
+          </Field>
+          <Field label="Purge (g)" htmlFor={`lines.${i}.purgeG`} error={errors[`lines.${i}.purgeG`]}>
+            <Input
+              id={`lines.${i}.purgeG`}
+              type="number"
+              inputMode="decimal"
+              step="any"
+              min={0}
+              value={l.purgeG}
+              onChange={(e) => updateLine(l.key, { purgeG: e.target.value })}
+            />
+          </Field>
+          <Field label="Extra (g)" htmlFor={`lines.${i}.extraG`} error={errors[`lines.${i}.extraG`]}>
+            <Input
+              id={`lines.${i}.extraG`}
+              type="number"
+              inputMode="decimal"
+              step="any"
+              min={0}
+              placeholder="0"
+              value={l.extraG}
+              onChange={(e) => updateLine(l.key, { extraG: e.target.value })}
+            />
+          </Field>
+        </div>
+        <p className="tabular text-muted-foreground text-xs">
+          Total from this spool: {formatGrams(lineTotalG(lineN))}
+        </p>
+      </div>
+    );
+  };
+
+  const shortageAlerts = shortages.map((x) => (
+    <Alert key={x.spool.id}>
+      <AlertTriangle />
+      <span>
+        <b>{x.spool.spoolCode}</b> has {formatGrams(x.available)} left but this print needs{" "}
+        {formatGrams(x.need)}. You can still save; correct the spool&apos;s weight on a scale afterwards.
+      </span>
+    </Alert>
+  ));
+
   return (
     <form onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
       {formError && <Alert variant="danger">{formError}</Alert>}
 
       <Card className="grid gap-4 p-4 sm:grid-cols-2">
-        {models.length > 0 && (
-          <Field
-            label="Model"
-            htmlFor="modelChoice"
-            className="sm:col-span-2"
-            hint={modelChoice ? "This print is added as another part of that model." : undefined}
-          >
-            <Select id="modelChoice" value={modelChoice} onChange={(e) => setModelChoice(e.target.value)}>
-              <option value="">New model</option>
-              {models.map((m) => (
-                <option key={m.id} value={m.id}>
-                  Add part to: {m.name} ({m.parts} {m.parts === 1 ? "part" : "parts"})
-                </option>
-              ))}
-            </Select>
-          </Field>
-        )}
-        {!modelChoice && (
-          <Field label="Model name" htmlFor="modelName" error={errors.modelName} className="sm:col-span-2">
-            <Input
-              id="modelName"
-              autoFocus={!existing}
-              value={modelName}
-              onChange={(e) => setModelName(e.target.value)}
-              aria-invalid={!!errors.modelName}
-              placeholder="e.g. Articulated dragon"
-            />
-          </Field>
-        )}
-        {!modelChoice && !existing?.modelId && (
-          <label className="flex items-center gap-2 text-sm sm:col-span-2">
-            <input
-              type="checkbox"
-              className="accent-primary size-4"
-              checked={multiPart}
-              onChange={(e) => setMultiPart(e.target.checked)}
-            />
-            This model has several parts printed separately
-          </label>
-        )}
-        {(modelChoice || multiPart) && (
-          <Field
-            label="Part name"
-            htmlFor="partName"
-            error={errors.partName}
-            className="sm:col-span-2"
-            hint="e.g. Head, Body, Base"
-          >
-            <Input
-              id="partName"
-              autoFocus={!!modelChoice && !existing}
-              value={partName}
-              onChange={(e) => setPartName(e.target.value)}
-              aria-invalid={!!errors.partName}
-            />
-          </Field>
-        )}
-        <fieldset className="flex flex-col gap-1.5">
-          <legend className="mb-1.5 text-sm font-medium">Print time</legend>
-          <div className="grid grid-cols-2 gap-2">
-            <div className="relative">
-              <Input
-                id="printHours"
-                aria-label="Hours"
-                type="number"
-                inputMode="numeric"
-                min={0}
-                step={1}
-                placeholder="0"
-                className="pr-10"
-                value={hours}
-                onChange={(e) => setHours(e.target.value)}
-                aria-invalid={!!errors.printMinutes}
-              />
-              <span className="text-muted-foreground pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-sm">
-                h
-              </span>
-            </div>
-            <div className="relative">
-              <Input
-                id="printMins"
-                aria-label="Minutes"
-                type="number"
-                inputMode="numeric"
-                min={0}
-                max={59}
-                step={1}
-                placeholder="0"
-                className="pr-12"
-                value={mins}
-                onChange={(e) => setMins(e.target.value)}
-                aria-invalid={!!errors.printMinutes}
-              />
-              <span className="text-muted-foreground pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-sm">
-                min
-              </span>
-            </div>
-          </div>
-          {errors.printMinutes ? (
-            <p className="text-danger text-xs" role="alert">
-              {errors.printMinutes}
-            </p>
-          ) : (
-            <p className="text-muted-foreground text-xs">From your slicer</p>
+        <Field label="Model name" htmlFor="modelName" error={errors.modelName} className="sm:col-span-2">
+          <Input
+            id="modelName"
+            autoFocus={!existing}
+            value={modelName}
+            onChange={(e) => setModelName(e.target.value)}
+            aria-invalid={!!errors.modelName}
+            placeholder="e.g. Articulated dragon"
+          />
+        </Field>
+        <label className="flex items-center gap-2 text-sm sm:col-span-2">
+          <input
+            type="checkbox"
+            className="accent-primary size-4"
+            checked={multiPart}
+            disabled={parts.length > 1}
+            onChange={(e) => setMultiPart(e.target.checked)}
+          />
+          This model has several parts printed separately
+          {parts.length > 1 && (
+            <span className="text-muted-foreground text-xs">(remove parts to untick)</span>
           )}
-        </fieldset>
+        </label>
+        {!multiPart && (
+          <TimeInputs
+            idPrefix="print"
+            hours={hours}
+            mins={mins}
+            onHours={setHours}
+            onMins={setMins}
+            error={errors.printMinutes}
+          />
+        )}
         <Field label="Date" htmlFor="printedAt" error={errors.printedAt}>
           <Input
             id="printedAt"
@@ -393,7 +505,7 @@ export function PrintForm({
               <label
                 key={v}
                 className={cn(
-                  "has-[:focus-visible]:ring-ring flex h-10 cursor-pointer items-center justify-center rounded-lg border text-sm has-[:focus-visible]:ring-2",
+                  "has-[:focus-visible]:ring-ring flex h-10 cursor-pointer items-center justify-center rounded-full border text-sm has-[:focus-visible]:ring-2",
                   status === v &&
                     (v === "success"
                       ? "border-success bg-success/10 font-medium"
@@ -420,134 +532,118 @@ export function PrintForm({
         </fieldset>
       </Card>
 
-      <Card>
-        <CardHeader title="Filament" />
-        <div className="flex flex-col gap-3 p-4">
-          {errors.lines && <p className="text-danger text-xs">{errors.lines}</p>}
-          {spools && spools.filter((s) => s.status === "active").length === 0 && !existing && (
-            <Alert>
-              <AlertTriangle /> Add a spool first — prints are deducted from spools.
-            </Alert>
-          )}
-          {lines.map((l, i) => {
-            const s = spoolById.get(l.spoolId);
-            const lineN = lineNums[i]!;
+      {spools && spools.filter((s) => s.status === "active").length === 0 && !existing && (
+        <Alert>
+          <AlertTriangle /> Add a spool first — prints are deducted from spools.
+        </Alert>
+      )}
+
+      {!multiPart ? (
+        <Card>
+          <CardHeader title="Filament" />
+          <div className="flex flex-col gap-3 p-4">
+            {errors.lines && <p className="text-danger text-xs">{errors.lines}</p>}
+            {lines.map((l, i) => renderLine(l, i, i + 1, lines.length, lines.length > 1))}
+            <Button
+              variant="outline"
+              size="sm"
+              className="self-start"
+              onClick={() =>
+                setLines((ls) => [
+                  ...ls,
+                  { key: newKey(), partKey: null, spoolId: "", modelG: "", purgeG: "0", extraG: "" },
+                ])
+              }
+            >
+              <Plus /> Add another spool
+            </Button>
+            {lines.length > 1 && (
+              <p className="text-muted-foreground text-xs">
+                Purge starts on the first spool. Move some to other spools if the colour changes used them.
+              </p>
+            )}
+            {shortageAlerts}
+          </div>
+        </Card>
+      ) : (
+        <>
+          {parts.map((p, pi) => {
+            const partLines = lines.map((l, i) => ({ l, i })).filter(({ l }) => l.partKey === p.key);
             return (
-              <div key={l.key} className="flex flex-col gap-3 rounded-lg border p-3">
-                <div className="flex items-end gap-2">
-                  <Field
-                    label={lines.length > 1 ? `Spool ${i + 1}` : "Spool"}
-                    htmlFor={`lines.${i}.spoolId`}
-                    error={errors[`lines.${i}.spoolId`]}
-                    className="flex-1"
-                  >
-                    <div className="flex items-center gap-2">
-                      {s && <Swatch hex={s.colourHex} className="size-6" />}
-                      <Select
-                        id={`lines.${i}.spoolId`}
-                        value={l.spoolId}
-                        onChange={(e) => updateLine(l.key, { spoolId: e.target.value })}
-                        aria-invalid={!!errors[`lines.${i}.spoolId`]}
+              <Card key={p.key}>
+                <CardHeader
+                  title={`Part ${pi + 1}${p.name.trim() ? ` · ${p.name.trim()}` : ""}`}
+                  action={
+                    parts.length > 1 ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-danger"
+                        onClick={() => removePart(p.key)}
+                        aria-label={`Remove part ${pi + 1}`}
                       >
-                        <option value="">Choose a spool…</option>
-                        {selectable.map((sp) => (
-                          <option
-                            key={sp.id}
-                            value={sp.id}
-                            disabled={lines.some((x) => x.key !== l.key && x.spoolId === sp.id)}
-                          >
-                            {sp.spoolCode} — {sp.name} (
-                            {formatGrams(sp.remainingG + (previousUse.get(sp.id) ?? 0))} left)
-                          </option>
-                        ))}
-                      </Select>
-                    </div>
-                  </Field>
-                  {lines.length > 1 && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label={`Remove spool ${i + 1}`}
-                      onClick={() => setLines((ls) => ls.filter((x) => x.key !== l.key))}
+                        <Trash2 /> Remove part
+                      </Button>
+                    ) : undefined
+                  }
+                />
+                <div className="flex flex-col gap-3 p-4">
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <Field
+                      label="Part name"
+                      htmlFor={`parts.${pi}.name`}
+                      error={errors[`parts.${pi}.name`]}
+                      hint="e.g. Head, Body, Base"
                     >
-                      <Trash2 />
-                    </Button>
+                      <Input
+                        id={`parts.${pi}.name`}
+                        value={p.name}
+                        onChange={(e) => updatePart(p.key, { name: e.target.value })}
+                        aria-invalid={!!errors[`parts.${pi}.name`]}
+                      />
+                    </Field>
+                    <TimeInputs
+                      idPrefix={`parts.${pi}.`}
+                      hours={p.hours}
+                      mins={p.mins}
+                      onHours={(v) => updatePart(p.key, { hours: v })}
+                      onMins={(v) => updatePart(p.key, { mins: v })}
+                      error={errors[`parts.${pi}.printMinutes`]}
+                    />
+                  </div>
+                  {partLines.map(({ l, i }, n) =>
+                    renderLine(l, i, n + 1, partLines.length, partLines.length > 1),
                   )}
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                  <Field
-                    label={failed ? "Used (g)" : "Model (g)"}
-                    htmlFor={`lines.${i}.modelG`}
-                    error={errors[`lines.${i}.modelG`]}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="self-start"
+                    onClick={() =>
+                      setLines((ls) => [
+                        ...ls,
+                        { key: newKey(), partKey: p.key, spoolId: "", modelG: "", purgeG: "0", extraG: "" },
+                      ])
+                    }
                   >
-                    <Input
-                      id={`lines.${i}.modelG`}
-                      type="number"
-                      inputMode="decimal"
-                      step="any"
-                      min={0}
-                      value={l.modelG}
-                      onChange={(e) => updateLine(l.key, { modelG: e.target.value })}
-                      aria-invalid={!!errors[`lines.${i}.modelG`]}
-                    />
-                  </Field>
-                  <Field label="Purge (g)" htmlFor={`lines.${i}.purgeG`} error={errors[`lines.${i}.purgeG`]}>
-                    <Input
-                      id={`lines.${i}.purgeG`}
-                      type="number"
-                      inputMode="decimal"
-                      step="any"
-                      min={0}
-                      value={l.purgeG}
-                      onChange={(e) => updateLine(l.key, { purgeG: e.target.value })}
-                    />
-                  </Field>
-                  <Field label="Extra (g)" htmlFor={`lines.${i}.extraG`} error={errors[`lines.${i}.extraG`]}>
-                    <Input
-                      id={`lines.${i}.extraG`}
-                      type="number"
-                      inputMode="decimal"
-                      step="any"
-                      min={0}
-                      placeholder="0"
-                      value={l.extraG}
-                      onChange={(e) => updateLine(l.key, { extraG: e.target.value })}
-                    />
-                  </Field>
+                    <Plus /> Add spool to this part
+                  </Button>
                 </div>
-                <p className="tabular text-muted-foreground text-xs">
-                  Total from this spool: {formatGrams(lineTotalG(lineN))}
-                </p>
-              </div>
+              </Card>
             );
           })}
-          <Button
-            variant="outline"
-            size="sm"
-            className="self-start"
-            onClick={() =>
-              setLines((ls) => [...ls, { key: newKey(), spoolId: "", modelG: "", purgeG: "0", extraG: "" }])
-            }
-          >
-            <Plus /> Add another spool
-          </Button>
-          {lines.length > 1 && (
-            <p className="text-muted-foreground text-xs">
-              Purge starts on the first spool. Move some to other spools if the colour changes used them.
+          <div className="flex flex-col gap-3">
+            <Button variant="outline" className="self-start" onClick={addPart}>
+              <Plus /> Add another part
+            </Button>
+            <p className="tabular text-muted-foreground text-sm">
+              {parts.length} parts · total {formatDuration(totalMinutes)} ·{" "}
+              {formatGrams(lineNums.reduce((s, l) => s + lineTotalG(l), 0))}
             </p>
-          )}
-          {shortages.map((x) => (
-            <Alert key={x.spool.id}>
-              <AlertTriangle />
-              <span>
-                <b>{x.spool.spoolCode}</b> has {formatGrams(x.available)} left but this print needs{" "}
-                {formatGrams(x.need)}. You can still save; correct the spool&apos;s weight on a scale
-                afterwards.
-              </span>
-            </Alert>
-          ))}
-        </div>
-      </Card>
+            {errors.lines && <p className="text-danger text-xs">{errors.lines}</p>}
+            {shortageAlerts}
+          </div>
+        </>
+      )}
 
       <Card>
         <CardHeader title="Photos" />
@@ -720,7 +816,7 @@ export function PrintForm({
         </Field>
       </Card>
 
-      <div className="sticky bottom-20 z-10 flex justify-end gap-2 md:bottom-4">
+      <div className="sticky bottom-[calc(6rem+env(safe-area-inset-bottom))] z-10 flex justify-end gap-2 md:bottom-8">
         <Button variant="outline" className="bg-card" onClick={() => router.back()}>
           Cancel
         </Button>
@@ -742,5 +838,76 @@ function RemoveBadge({ onClick }: { onClick: () => void }) {
     >
       <X className="size-3.5" />
     </button>
+  );
+}
+
+/** Hours + minutes boxes (iPhone number keypads have no ":" key). */
+function TimeInputs({
+  idPrefix,
+  hours,
+  mins,
+  onHours,
+  onMins,
+  error,
+}: {
+  idPrefix: string;
+  hours: string;
+  mins: string;
+  onHours: (v: string) => void;
+  onMins: (v: string) => void;
+  error?: string;
+}) {
+  const hoursId = idPrefix === "print" ? "printHours" : `${idPrefix}hours`;
+  const minsId = idPrefix === "print" ? "printMins" : `${idPrefix}mins`;
+  return (
+    <fieldset className="flex flex-col gap-1.5">
+      <legend className="mb-1.5 text-sm font-medium">Print time</legend>
+      <div className="grid grid-cols-2 gap-2">
+        <div className="relative">
+          <Input
+            id={hoursId}
+            aria-label="Hours"
+            type="number"
+            inputMode="numeric"
+            min={0}
+            step={1}
+            placeholder="0"
+            className="pr-10"
+            value={hours}
+            onChange={(e) => onHours(e.target.value)}
+            aria-invalid={!!error}
+          />
+          <span className="text-muted-foreground pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-sm">
+            h
+          </span>
+        </div>
+        <div className="relative">
+          <Input
+            id={minsId}
+            aria-label="Minutes"
+            type="number"
+            inputMode="numeric"
+            min={0}
+            max={59}
+            step={1}
+            placeholder="0"
+            className="pr-12"
+            value={mins}
+            onChange={(e) => onMins(e.target.value)}
+            aria-invalid={!!error}
+          />
+          <span className="text-muted-foreground pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-sm">
+            min
+          </span>
+        </div>
+      </div>
+      {error ? (
+        <p className="text-danger text-xs" role="alert">
+          {error}
+        </p>
+      ) : (
+        <p className="text-muted-foreground text-xs">From your slicer</p>
+      )}
+    </fieldset>
   );
 }

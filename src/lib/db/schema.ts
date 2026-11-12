@@ -93,6 +93,23 @@ export const prints = pgTable(
   ],
 );
 
+/** Separately printed parts of one print job (e.g. head, body, base). Single-part prints have no rows here. */
+export const printParts = pgTable(
+  "print_parts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    printId: uuid("print_id")
+      .notNull()
+      .references(() => prints.id),
+    name: text("name").notNull(),
+    printMinutes: integer("print_minutes").notNull(),
+    sortOrder: integer("sort_order").notNull().default(0),
+    ...audit,
+    deletedAt: ts("deleted_at"),
+  },
+  (t) => [index("print_parts_print_idx").on(t.printId)],
+);
+
 export const printSpools = pgTable(
   "print_spools",
   {
@@ -103,6 +120,8 @@ export const printSpools = pgTable(
     spoolId: uuid("spool_id")
       .notNull()
       .references(() => spools.id),
+    /** Which part of a multi-part print this filament was used for (null for single-part prints). */
+    partId: uuid("part_id").references(() => printParts.id),
     modelG: doublePrecision("model_g").notNull(),
     purgeG: doublePrecision("purge_g").notNull(),
     extraG: doublePrecision("extra_g").notNull(),
@@ -176,6 +195,7 @@ export type NewSpool = typeof spools.$inferInsert;
 export type Print = typeof prints.$inferSelect;
 export type Model = typeof models.$inferSelect;
 export type PrintSpool = typeof printSpools.$inferSelect;
+export type PrintPart = typeof printParts.$inferSelect;
 export type SpoolAdjustment = typeof spoolAdjustments.$inferSelect;
 export type Photo = typeof photos.$inferSelect;
 export type Settings = typeof settings.$inferSelect;

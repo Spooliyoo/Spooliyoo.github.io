@@ -43,4 +43,23 @@ export const MIGRATIONS: { version: number; name: string; statements: string[] }
       'CREATE INDEX "prints_model_idx" ON "prints" ("model_id");',
     ],
   },
+  {
+    version: 4,
+    name: "0003_print_parts",
+    statements: [
+      'CREATE TABLE "print_parts" (\n\t"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,\n\t"print_id" uuid NOT NULL,\n\t"name" text NOT NULL,\n\t"print_minutes" integer NOT NULL,\n\t"sort_order" integer DEFAULT 0 NOT NULL,\n\t"created_at" timestamp with time zone DEFAULT now() NOT NULL,\n\t"updated_at" timestamp with time zone DEFAULT now() NOT NULL,\n\t"deleted_at" timestamp with time zone\n);',
+      'ALTER TABLE "print_spools" ADD COLUMN "part_id" uuid;',
+      'ALTER TABLE "print_parts" ADD CONSTRAINT "print_parts_print_id_prints_id_fk" FOREIGN KEY ("print_id") REFERENCES "public"."prints"("id") ON DELETE no action ON UPDATE no action;',
+      'CREATE INDEX "print_parts_print_idx" ON "print_parts" USING btree ("print_id");',
+      'ALTER TABLE "print_spools" ADD CONSTRAINT "print_spools_part_id_print_parts_id_fk" FOREIGN KEY ("part_id") REFERENCES "public"."print_parts"("id") ON DELETE no action ON UPDATE no action;',
+      "-- Convert old multi-print models into single prints with parts (same SQL as src/lib/db/legacy.ts)\nCREATE TEMP TABLE _legacy_parts AS\n     SELECT id, model_id, part_name, print_minutes,\n       row_number() OVER w AS rn,\n       first_value(id) OVER w AS parent_id\n     FROM prints\n     WHERE model_id IS NOT NULL AND deleted_at IS NULL\n     WINDOW w AS (PARTITION BY model_id ORDER BY printed_at, created_at);",
+      "INSERT INTO print_parts (id, print_id, name, print_minutes, sort_order)\n     SELECT id, parent_id, coalesce(nullif(part_name, ''), 'Part ' || rn), print_minutes, rn FROM _legacy_parts;",
+      "UPDATE print_spools ps SET part_id = l.id, print_id = l.parent_id FROM _legacy_parts l WHERE ps.print_id = l.id;",
+      "UPDATE photos ph SET print_id = l.parent_id FROM _legacy_parts l WHERE ph.print_id = l.id AND l.rn > 1;",
+      "UPDATE prints p SET\n       print_minutes = s.mins, labour_minutes = s.labour,\n       filament_cost = s.fc, electricity_cost = s.ec, wear_cost = s.wc, labour_cost = s.lc,\n       buffer_cost = s.bc, total_cost = s.tc, selling_price = s.sp, profit = s.pr,\n       price_overridden = s.po, status = s.st, model_name = coalesce(s.mname, p.model_name),\n       model_id = NULL, part_name = ''\n     FROM (\n       SELECT l.parent_id, sum(c.print_minutes) AS mins, sum(c.labour_minutes) AS labour,\n         sum(c.filament_cost) AS fc, sum(c.electricity_cost) AS ec, sum(c.wear_cost) AS wc,\n         sum(c.labour_cost) AS lc, sum(c.buffer_cost) AS bc, sum(c.total_cost) AS tc,\n         sum(c.selling_price) AS sp, sum(c.profit) AS pr, bool_or(c.price_overridden) AS po,\n         CASE WHEN bool_and(c.status = 'failed') THEN 'failed' ELSE 'success' END AS st,\n         max(m.name) AS mname\n       FROM _legacy_parts l\n       JOIN prints c ON c.id = l.id\n       LEFT JOIN models m ON m.id = l.model_id\n       GROUP BY l.parent_id\n     ) s\n     WHERE p.id = s.parent_id;",
+      "DELETE FROM prints p USING _legacy_parts l WHERE p.id = l.id AND l.rn > 1;",
+      "UPDATE models SET deleted_at = now() WHERE deleted_at IS NULL;",
+      "DROP TABLE _legacy_parts;",
+    ],
+  },
 ];

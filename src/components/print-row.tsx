@@ -22,10 +22,8 @@ export function PrintRow({ print: p }: { print: PrintListItem }) {
       )}
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="truncate font-medium">
-            {p.modelName}
-            {p.partName && <span className="text-muted-foreground font-normal"> — {p.partName}</span>}
-          </span>
+          <span className="truncate font-medium">{p.modelName}</span>
+          {p.partNames.length > 0 && <Badge>{p.partNames.length} parts</Badge>}
           {p.status === "failed" && <Badge variant="danger">Failed</Badge>}
         </div>
         <div className="text-muted-foreground flex items-center gap-1.5 truncate text-xs">

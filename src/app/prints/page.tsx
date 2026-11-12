@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { History, Plus, Search, SlidersHorizontal } from "lucide-react";
+import { Box, Plus, Search, SlidersHorizontal } from "lucide-react";
 import { useLocalQuery } from "@/components/providers";
 import { listPrints, listSpools, type PrintFilters } from "@/lib/db/repo";
 import { MATERIALS } from "@/lib/db/schema";
@@ -20,7 +20,7 @@ import {
 } from "@/components/ui";
 import { localDateToIso } from "@/lib/utils";
 
-export default function HistoryPage() {
+export default function PrintsPage() {
   const [q, setQ] = React.useState("");
   const [debounced, setDebounced] = React.useState("");
   const [spoolId, setSpoolId] = React.useState("");
@@ -52,7 +52,7 @@ export default function HistoryPage() {
   return (
     <div className="flex flex-col gap-4">
       <PageHeader
-        title="History"
+        title="Prints"
         actions={
           <Link href="/prints/new/" className={buttonVariants({ size: "sm" })}>
             <Plus /> Log print
@@ -127,7 +127,7 @@ export default function HistoryPage() {
         <Spinner />
       ) : !data?.length ? (
         <Card>
-          <EmptyState icon={<History />} title={debounced || active ? "No prints match" : "No prints yet"} />
+          <EmptyState icon={<Box />} title={debounced || active ? "No prints match" : "No prints yet"} />
         </Card>
       ) : (
         <Card className="divide-y overflow-hidden">

@@ -5,7 +5,12 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 ## [Unreleased]
 
 ### Added
-- Multi-part models: log several separately printed parts under one model, with a model page showing all parts and combined filament, time, cost, price and profit.
+- Multi-part prints: tick "several parts" while logging and add each part (name, time, spools) in the same log. History shows one print; its page lists the parts. Older multi-print models are merged automatically.
+- Prints menu with the full list; History now shows the last 5 prints and a Recently deleted section (restore or delete forever; kept 30 days).
+- New Spooliyoo app icon and logo.
+
+### Changed
+- More space below floating buttons (Back up, Save, messages), including the iPhone home-indicator area.
 - Print time is entered in separate hour and minute boxes (iPhone keypads have no ":" key).
 
 ## [1.0.0]

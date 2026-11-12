@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Pencil, Trash2, Copy } from "lucide-react";
-import { useApp, useLocalQuery, useMoney, useToast, useWrite } from "@/components/providers";
+import { useLocalQuery, useMoney, useToast, useWrite } from "@/components/providers";
 import { BackButton, PhotoImg, useSearchParam, withSuspense } from "@/components/shared";
 import {
   Badge,
@@ -19,7 +19,7 @@ import {
   Swatch,
   buttonVariants,
 } from "@/components/ui";
-import { deletePrint, getPrint } from "@/lib/db/repo";
+import { deletePrint, getPrint, RECENTLY_DELETED_DAYS, type PrintDetail } from "@/lib/db/repo";
 import { formatDuration, formatGrams } from "@/lib/calc";
 import { formatDate } from "@/lib/utils";
 
@@ -29,7 +29,6 @@ function PrintDetailPage() {
   const write = useWrite();
   const toast = useToast();
   const money = useMoney();
-  const { photos } = useApp();
   const { data: p, isLoading } = useLocalQuery(["print", id], ({ db }) => getPrint(db, id!), !!id);
   const [confirm, setConfirm] = React.useState(false);
   const [zoom, setZoom] = React.useState<string | null>(null);
@@ -43,7 +42,7 @@ function PrintDetailPage() {
   return (
     <div className="flex flex-col gap-4">
       <PageHeader
-        title={p.partName ? `${p.modelName} — ${p.partName}` : p.modelName}
+        title={p.modelName}
         back={<BackButton fallback="/prints/" />}
         actions={
           <Link
@@ -70,18 +69,6 @@ function PrintDetailPage() {
         </div>
       )}
 
-      {p.modelId && (
-        <Link
-          href={`/models/view/?id=${p.modelId}`}
-          className="bg-primary-soft text-primary flex items-center justify-between rounded-2xl px-4 py-3 text-sm font-medium"
-        >
-          <span>
-            Part <b>{p.partName}</b> of <b>{p.modelName}</b>
-          </span>
-          <span>All parts →</span>
-        </Link>
-      )}
-
       <Card className="grid grid-cols-2 gap-4 p-4 sm:grid-cols-4">
         <Stat label="Date" value={formatDate(p.printedAt)} />
         <Stat label="Print time" value={formatDuration(p.printMinutes)} />
@@ -92,29 +79,30 @@ function PrintDetailPage() {
         />
       </Card>
 
-      <Card>
-        <CardHeader title="Filament used" />
-        <ul className="divide-y pt-2">
-          {p.lines.map((l) => (
-            <li key={l.id}>
-              <Link
-                href={`/spools/view/?id=${l.spoolId}`}
-                className="hover:bg-muted/60 flex items-center gap-3 px-4 py-3"
-              >
-                <Swatch hex={l.colourHex} className="size-6" />
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-medium">{l.spoolName}</div>
-                  <div className="text-muted-foreground text-xs">
-                    <span className="font-mono">{l.spoolCode}</span> · {failed ? "used" : "model"} {l.modelG}{" "}
-                    g · purge {l.purgeG} g{l.extraG ? ` · extra ${l.extraG} g` : ""}
-                  </div>
-                </div>
-                <span className="tabular text-sm font-medium">{formatGrams(l.totalG)}</span>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </Card>
+      {p.parts.length > 0 ? (
+        p.parts.map((part, pi) => {
+          const partLines = p.lines.filter((l) => l.partId === part.id);
+          return (
+            <Card key={part.id}>
+              <CardHeader
+                title={`Part ${pi + 1} · ${part.name}`}
+                action={
+                  <span className="tabular text-muted-foreground text-xs">
+                    {formatDuration(part.printMinutes)} ·{" "}
+                    {formatGrams(partLines.reduce((s, l) => s + l.totalG, 0))}
+                  </span>
+                }
+              />
+              <LineList lines={partLines} failed={failed} />
+            </Card>
+          );
+        })
+      ) : (
+        <Card>
+          <CardHeader title="Filament used" />
+          <LineList lines={p.lines} failed={failed} />
+        </Card>
+      )}
 
       <Card>
         <CardHeader title="Cost and price" />
@@ -157,12 +145,10 @@ function PrintDetailPage() {
           <Trash2 /> Delete print
         </Button>
         <Link
-          href={
-            p.modelId ? `/prints/new/?model=${p.modelId}` : `/prints/new/?spool=${p.lines[0]?.spoolId ?? ""}`
-          }
+          href={`/prints/new/?spool=${p.lines[0]?.spoolId ?? ""}`}
           className={buttonVariants({ variant: "ghost" })}
         >
-          <Copy /> {p.modelId ? "Add another part" : "Log another"}
+          <Copy /> Log another
         </Link>
       </div>
 
@@ -178,8 +164,8 @@ function PrintDetailPage() {
             <Button
               variant="danger"
               onClick={async () => {
-                await write(({ db }) => deletePrint(db, id, photos));
-                toast("Print deleted — filament returned to its spools");
+                await write(({ db }) => deletePrint(db, id));
+                toast("Moved to Recently deleted — filament returned to its spools");
                 router.replace("/prints/");
               }}
             >
@@ -189,7 +175,8 @@ function PrintDetailPage() {
         }
       >
         The {formatGrams(totalG)} it used will be added back to{" "}
-        {p.lines.length > 1 ? "its spools" : "the spool"}.
+        {p.lines.length > 1 ? "its spools" : "the spool"}. You can restore it from History → Recently deleted
+        for {RECENTLY_DELETED_DAYS} days.
       </Dialog>
 
       <Dialog
@@ -207,3 +194,28 @@ function PrintDetailPage() {
 }
 
 export default withSuspense(PrintDetailPage);
+
+function LineList({ lines, failed }: { lines: PrintDetail["lines"]; failed: boolean }) {
+  return (
+    <ul className="divide-y pt-2">
+      {lines.map((l) => (
+        <li key={l.id}>
+          <Link
+            href={`/spools/view/?id=${l.spoolId}`}
+            className="hover:bg-muted/60 flex items-center gap-3 px-4 py-3"
+          >
+            <Swatch hex={l.colourHex} className="size-6" />
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm font-medium">{l.spoolName}</div>
+              <div className="text-muted-foreground text-xs">
+                <span className="font-mono">{l.spoolCode}</span> · {failed ? "used" : "model"} {l.modelG} g ·
+                purge {l.purgeG} g{l.extraG ? ` · extra ${l.extraG} g` : ""}
+              </div>
+            </div>
+            <span className="tabular text-sm font-medium">{formatGrams(l.totalG)}</span>
+          </Link>
+        </li>
+      ))}
+    </ul>
+  );
+}
